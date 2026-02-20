@@ -53,7 +53,7 @@
           </div>
 
           <label class="flex items-center gap-2 text-sm text-slate-300">
-            <input id="overwrite" type="checkbox" class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-cyan-500 focus:ring-cyan-500" />
+            <input id="overwrite" type="checkbox" checked class="h-4 w-4 rounded border-slate-600 bg-slate-900 text-cyan-500 focus:ring-cyan-500" />
             Overwrite existing files
           </label>
 
@@ -83,7 +83,73 @@
           </div>
         </section>
       </section>
+
+      <section class="mt-6 rounded-2xl border border-slate-800 bg-slate-900/80 p-6">
+        <h2 class="text-lg font-semibold text-slate-100">Workflow Steps</h2>
+        <ol class="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-300">
+          <li><span class="font-semibold text-slate-100">Step 1:</span> กด <span class="rounded bg-slate-800 px-1.5 py-0.5 text-xs">Select Folder</span> เพื่อเลือก target USB</li>
+          <li><span class="font-semibold text-slate-100">Step 2:</span> กด <span class="rounded bg-slate-800 px-1.5 py-0.5 text-xs">Validate Target</span> เพื่อตรวจ path และสร้างโฟลเดอร์ให้ครบ</li>
+          <li><span class="font-semibold text-slate-100">Step 3:</span> เลือกไฟล์ ISO แล้วกด <span class="rounded bg-slate-800 px-1.5 py-0.5 text-xs">Prepare + Import</span></li>
+          <li><span class="font-semibold text-slate-100">Step 4:</span> ระบบจะ import เกมเข้า <code>CD/</code> หรือ <code>DVD/</code>, ดึง <code>game_id</code> จาก ISO (ถ้าอ่านได้), และบันทึก mapping ที่ <code>CFG/game_manifest.json</code></li>
+          <li><span class="font-semibold text-slate-100">Step 5:</span> ที่ ART Manager กด <span class="rounded bg-slate-800 px-1.5 py-0.5 text-xs">Search ART</span> แล้วเลือกรูป</li>
+          <li><span class="font-semibold text-slate-100">Step 6:</span> กด <span class="rounded bg-slate-800 px-1.5 py-0.5 text-xs">Save Selected ART</span> เพื่อบันทึกรูปโดยใช้ <code>game_id</code> เดียวกับที่ import</li>
+        </ol>
+        <p class="mt-3 text-xs text-amber-300">Note: หลัง import ชื่อไฟล์เกมจะเป็นรูปแบบ <code>${id}_${filename}</code> เพื่อให้ OPL map กับ ART ได้ตรง และระบบยังเก็บ mapping ใน <code>CFG/game_manifest.json</code>.</p>
+      </section>
+
+      <section class="mt-6 rounded-2xl border border-slate-800 bg-slate-900/80 p-6">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h2 class="text-lg font-semibold text-slate-100">ART Manager</h2>
+          <select id="art-mode" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100">
+            <option value="manual">Manual Upload</option>
+            <option value="auto" selected>Auto Fetch (RAWG)</option>
+          </select>
+        </div>
+
+        <div class="mt-4 grid gap-4 md:grid-cols-2">
+          <div>
+            <label for="art-game-name" class="block text-sm font-medium text-slate-200">Game Name (optional)</label>
+            <input id="art-game-name" type="text" placeholder="Resident Evil 4" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100" />
+          </div>
+          <div>
+            <label for="art-source-filename" class="block text-sm font-medium text-slate-200">ISO Filename (fallback)</label>
+            <input id="art-source-filename" type="text" placeholder="SLUS_209.46_Resident_Evil_4.iso" class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100" />
+          </div>
+        </div>
+        <p class="mt-2 text-xs text-slate-400">Generated Game ID: <span id="generated-game-id" class="font-semibold text-cyan-300">-</span></p>
+
+        <div id="manual-art-block" class="mt-5 hidden space-y-3">
+          <p class="text-sm text-slate-300">Upload files by art type.</p>
+          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label class="text-xs text-slate-300">COV<input id="art-cov" type="file" accept=".jpg,.jpeg,.png" class="mt-1 block w-full text-xs" /></label>
+            <label class="text-xs text-slate-300">COV2<input id="art-cov2" type="file" accept=".jpg,.jpeg,.png" class="mt-1 block w-full text-xs" /></label>
+            <label class="text-xs text-slate-300">BG<input id="art-bg" type="file" accept=".jpg,.jpeg,.png" class="mt-1 block w-full text-xs" /></label>
+            <label class="text-xs text-slate-300">SCR<input id="art-scr" type="file" accept=".jpg,.jpeg,.png" class="mt-1 block w-full text-xs" /></label>
+            <label class="text-xs text-slate-300">SCR2<input id="art-scr2" type="file" accept=".jpg,.jpeg,.png" class="mt-1 block w-full text-xs" /></label>
+            <label class="text-xs text-slate-300">LGO<input id="art-lgo" type="file" accept=".jpg,.jpeg,.png" class="mt-1 block w-full text-xs" /></label>
+            <label class="text-xs text-slate-300">ICO<input id="art-ico" type="file" accept=".jpg,.jpeg,.png" class="mt-1 block w-full text-xs" /></label>
+            <label class="text-xs text-slate-300">LAB<input id="art-lab" type="file" accept=".jpg,.jpeg,.png" class="mt-1 block w-full text-xs" /></label>
+          </div>
+          <button id="upload-manual-art-btn" type="button" class="rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300">Upload Manual ART</button>
+        </div>
+
+        <div id="auto-art-block" class="mt-5">
+          <div class="flex flex-wrap gap-3">
+            <button id="search-auto-art-btn" type="button" class="rounded-lg bg-indigo-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-indigo-300">Search ART</button>
+            <button id="save-auto-art-btn" type="button" class="rounded-lg bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300">Save Selected ART</button>
+          </div>
+          <p class="mt-2 text-xs text-slate-400">Search uses RAWG API. Preview images below, assign art type, then save.</p>
+          <div id="auto-art-results" class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></div>
+        </div>
+      </section>
     </main>
+
+    <div id="loading-overlay" class="pointer-events-none fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/70 backdrop-blur-sm">
+      <div class="rounded-xl border border-cyan-500/40 bg-slate-900/95 px-6 py-5 text-center shadow-xl">
+        <div class="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-700 border-t-cyan-400"></div>
+        <p id="loading-text" class="mt-3 text-sm font-medium text-slate-100">Working...</p>
+      </div>
+    </div>
 
     <script src="/static/app.js"></script>
   </body>
