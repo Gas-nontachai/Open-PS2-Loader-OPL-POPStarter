@@ -64,6 +64,7 @@ const targetPathInput = document.getElementById("target-path");
 const isoFilesInput = document.getElementById("iso-files");
 const overwriteInput = document.getElementById("overwrite");
 const artGameNameInput = document.getElementById("art-game-name");
+const artSourceSelect = document.getElementById("art-source-select");
 const artSourceFilenameInput = document.getElementById("art-source-filename");
 const artCovInput = document.getElementById("art-cov");
 const artCov2Input = document.getElementById("art-cov2");
@@ -79,6 +80,7 @@ let activeController = null;
 let isLoading = false;
 const ART_TYPES = ["COV", "COV2", "BG", "SCR", "SCR2", "LGO", "ICO", "LAB"];
 let autoCandidates = [];
+let artSourceChoices = [];
 const BUSY_STATES = new Set([STATES.VALIDATING, STATES.FORMATTING, STATES.ARTING, STATES.IMPORTING]);
 
 const controllableElements = [
@@ -94,6 +96,7 @@ const controllableElements = [
   isoFilesInput,
   overwriteInput,
   artGameNameInput,
+  artSourceSelect,
   artSourceFilenameInput,
   artCovInput,
   artCov2Input,
@@ -318,6 +321,13 @@ form.addEventListener("submit", async (event) => {
 
     setState(readApiState(result.state), result.message);
     appendLog("success", result.message, result.details);
+    const importedFiles = (result.details?.imported || [])
+      .map((item) => item.file || item.source_filename || "")
+      .filter(Boolean);
+    if (importedFiles.length > 0) {
+      updateArtSourceChoices(importedFiles, importedFiles[0]);
+      appendLog("info", `พร้อมจัดการ ART ได้ ${importedFiles.length} เกม (เลือกจากช่อง 'เลือกเกมสำหรับ ART')`);
+    }
     await Swal.fire({
       icon: "success",
       title: "นำเข้าสำเร็จ",
@@ -495,10 +505,20 @@ artModeSelect.addEventListener("change", () => {
 });
 
 isoFilesInput.addEventListener("change", () => {
-  if (!artSourceFilenameInput.value && isoFilesInput.files?.length > 0) {
-    artSourceFilenameInput.value = isoFilesInput.files[0].name;
+  const uploaded = Array.from(isoFilesInput.files || []).map((file) => file.name);
+  if (uploaded.length > 0) {
+    updateArtSourceChoices(uploaded, uploaded[0]);
   }
 });
+
+if (artSourceSelect) {
+  artSourceSelect.addEventListener("change", () => {
+    const selected = artSourceSelect.value.trim();
+    if (selected) {
+      artSourceFilenameInput.value = selected;
+    }
+  });
+}
 
 function ensureArtBasics() {
   const targetPath = targetPathInput.value.trim();
@@ -510,6 +530,45 @@ function ensureArtBasics() {
 
 function setGeneratedGameId(value) {
   generatedGameIdEl.textContent = value || "-";
+}
+
+function normalizeArtSourceChoices(values) {
+  const seen = new Set();
+  const normalized = [];
+  values.forEach((value) => {
+    const filename = (value || "").trim();
+    if (!filename || seen.has(filename)) {
+      return;
+    }
+    seen.add(filename);
+    normalized.push(filename);
+  });
+  return normalized;
+}
+
+function updateArtSourceChoices(values, preferred = "") {
+  artSourceChoices = normalizeArtSourceChoices(values);
+  if (!artSourceSelect) {
+    if (preferred) {
+      artSourceFilenameInput.value = preferred;
+    }
+    return;
+  }
+
+  const previous = artSourceSelect.value;
+  artSourceSelect.innerHTML = '<option value="">-- เลือกจากไฟล์ที่ import/อัปโหลด --</option>';
+  artSourceChoices.forEach((filename) => {
+    const option = document.createElement("option");
+    option.value = filename;
+    option.textContent = filename;
+    artSourceSelect.appendChild(option);
+  });
+
+  const selectedValue = preferred || previous || artSourceFilenameInput.value.trim() || artSourceChoices[0] || "";
+  if (selectedValue) {
+    artSourceSelect.value = selectedValue;
+    artSourceFilenameInput.value = selectedValue;
+  }
 }
 
 function renderAutoCandidates(candidates) {

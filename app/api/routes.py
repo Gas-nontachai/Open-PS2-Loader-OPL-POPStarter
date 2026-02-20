@@ -198,7 +198,19 @@ async def format_target(payload: FormatTargetRequest):
                 status_code=500,
             )
 
-        mounted_path = wait_mount_point(disk_device)
+        steps.append(step("formatting", "info", "mounting formatted disk"))
+        mount_result = run_cmd(["diskutil", "mountDisk", f"/dev/{disk_device}"])
+        if mount_result.returncode != 0:
+            steps.append(
+                step(
+                    "formatting",
+                    "info",
+                    "mountDisk returned non-zero; waiting for auto-mount",
+                    {"stderr": mount_result.stderr.strip()},
+                )
+            )
+
+        mounted_path = wait_mount_point(disk_device, expected_label=label)
         steps.append(
             step(
                 "formatting",
@@ -891,6 +903,8 @@ async def import_iso(
 
         steps.append(step("importing", "info", "copying files to target"))
         imported: list[dict[str, Any]] = []
+        # Copy larger files first to reduce FAT32 fragmentation risk.
+        prepared_files.sort(key=lambda item: int(item["size"]), reverse=True)
 
         for item in prepared_files:
             if not target.exists():
@@ -925,7 +939,8 @@ async def import_iso(
                     status_code=409,
                 )
 
-            remaining_bytes = sum(f["size"] for f in prepared_files if f["name"] not in {i["name"] for i in imported})
+            imported_names = {i["file"] for i in imported}
+            remaining_bytes = sum(f["size"] for f in prepared_files if f["name"] not in imported_names)
             usage = shutil.disk_usage(target)
             dynamic_required = remaining_bytes + compute_buffer(remaining_bytes)
             if usage.free < dynamic_required:
