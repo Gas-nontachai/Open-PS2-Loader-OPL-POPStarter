@@ -55,6 +55,10 @@ const autoArtResults = document.getElementById("auto-art-results");
 const loadingOverlay = document.getElementById("loading-overlay");
 const loadingText = document.getElementById("loading-text");
 const generatedGameIdEl = document.getElementById("generated-game-id");
+const tabImportBtn = document.getElementById("tab-import-btn");
+const tabArtBtn = document.getElementById("tab-art-btn");
+const tabImportPanel = document.getElementById("tab-import-panel");
+const tabArtPanel = document.getElementById("tab-art-panel");
 
 const targetPathInput = document.getElementById("target-path");
 const isoFilesInput = document.getElementById("iso-files");
@@ -100,6 +104,20 @@ const controllableElements = [
   artIcoInput,
   artLabInput,
 ];
+
+function switchTab(tabName) {
+  const isImport = tabName === "import";
+  if (tabImportPanel && tabArtPanel) {
+    tabImportPanel.hidden = !isImport;
+    tabArtPanel.hidden = isImport;
+  }
+  if (tabImportBtn && tabArtBtn) {
+    tabImportBtn.classList.toggle("is-active", isImport);
+    tabArtBtn.classList.toggle("is-active", !isImport);
+    tabImportBtn.setAttribute("aria-selected", String(isImport));
+    tabArtBtn.setAttribute("aria-selected", String(!isImport));
+  }
+}
 
 function setState(nextState, message = "") {
   const allowed = TRANSITIONS[currentState] || [];
@@ -680,3 +698,9 @@ saveAutoArtBtn.addEventListener("click", async () => {
 });
 
 updateControlAvailability();
+
+if (tabImportBtn && tabArtBtn) {
+  tabImportBtn.addEventListener("click", () => switchTab("import"));
+  tabArtBtn.addEventListener("click", () => switchTab("art"));
+  switchTab("import");
+}

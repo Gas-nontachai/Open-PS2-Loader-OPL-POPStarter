@@ -12,174 +12,186 @@
   <body class="retro-body">
     <main class="retro-shell">
       <header class="hero-panel">
-        <p class="hero-badge">PS2 TOOLKIT 2000X</p>
+        <div class="hero-head">
+          <p class="hero-badge">PS2 TOOLKIT 2000X</p>
+          <div class="help-tooltip">
+            <button type="button" class="help-trigger" aria-label="ดูขั้นตอนใช้งาน">?</button>
+            <div class="help-popover">
+              <p class="help-title">ขั้นตอนใช้งาน</p>
+              <ol class="help-steps">
+                <li>เลือกโฟลเดอร์ USB ปลายทาง</li>
+                <li>ตรวจสอบและสร้างโฟลเดอร์ OPL ที่จำเป็น</li>
+                <li>นำเข้าไฟล์ ISO</li>
+                <li>ระบบอ่าน Game ID จาก ISO และบันทึก mapping ใน <code>CFG/game_manifest.json</code></li>
+                <li>ค้นหา ART และตรวจดูภาพตัวอย่าง</li>
+                <li>บันทึก ART ที่เลือกโดยใช้ Game ID เดียวกับเกม</li>
+              </ol>
+            </div>
+          </div>
+        </div>
         <h1 class="hero-title">ศูนย์ควบคุม ISO + ART</h1>
         <p class="hero-subtitle">
           จัดโครงสร้าง USB, ลงเกม PS2 จากไฟล์ ISO และใส่ ART ให้ตรง Game ID ในขั้นตอนเดียว
         </p>
       </header>
 
-      <section class="main-grid">
-        <form id="import-form" class="panel panel-form">
-          <h2 class="panel-title">
-            <i data-lucide="hard-drive"></i>
-            แผงนำเข้าเกม
-          </h2>
+      <section class="panel tabs-panel">
+        <div class="mode-tabs" role="tablist" aria-label="โหมดการใช้งาน">
+          <button type="button" id="tab-import-btn" class="mode-tab is-active" data-tab="import" role="tab" aria-selected="true">Import Game</button>
+          <button type="button" id="tab-art-btn" class="mode-tab" data-tab="art" role="tab" aria-selected="false">จัดการ ART</button>
+        </div>
+      </section>
 
-          <div class="field-block">
-            <label for="target-path" class="field-label">โฟลเดอร์ปลายทาง (Parent)</label>
-            <p class="field-help">เลือก path หลักของ USB ที่จะใช้กับ OPL</p>
-            <div class="field-row">
+      <section id="tab-import-panel" class="tab-pane">
+        <section class="main-grid">
+          <form id="import-form" class="panel panel-form">
+            <h2 class="panel-title">
+              <i data-lucide="hard-drive"></i>
+              แผงนำเข้าเกม
+            </h2>
+
+            <div class="field-block">
+              <label for="target-path" class="field-label">โฟลเดอร์ปลายทาง (Parent)</label>
+              <p class="field-help">เลือก path หลักของ USB ที่จะใช้กับ OPL</p>
+              <div class="field-row">
+                <input
+                  id="target-path"
+                  name="target_path"
+                  type="text"
+                  placeholder="/Volumes/PS2USB"
+                  class="field-input"
+                  required
+                />
+                <button id="pick-folder-btn" type="button" class="btn btn-ghost">
+                  <i data-lucide="folder-open"></i>
+                  เลือกโฟลเดอร์
+                </button>
+              </div>
+            </div>
+
+            <div class="field-block">
+              <label for="iso-files" class="field-label">ไฟล์ ISO</label>
+              <p class="field-help">เลือกไฟล์ `.iso` ได้หลายไฟล์ ระบบจะกำหนด/ยืนยัน Game ID ตอนนำเข้า</p>
               <input
-                id="target-path"
-                name="target_path"
-                type="text"
-                placeholder="/Volumes/PS2USB"
-                class="field-input"
+                id="iso-files"
+                name="files"
+                type="file"
+                accept=".iso"
+                multiple
+                class="field-input file-input"
                 required
               />
-              <button id="pick-folder-btn" type="button" class="btn btn-ghost">
-                <i data-lucide="folder-open"></i>
-                เลือกโฟลเดอร์
+            </div>
+
+            <label class="field-check">
+              <input id="overwrite" type="checkbox" checked />
+              <span>เขียนทับไฟล์เดิม (Overwrite)</span>
+            </label>
+
+            <div class="action-row">
+              <button id="validate-btn" type="button" class="btn btn-cyan">
+                <i data-lucide="shield-check"></i>
+                ตรวจสอบปลายทาง
+              </button>
+              <button id="import-btn" type="submit" class="btn btn-green">
+                <i data-lucide="upload"></i>
+                เตรียม + นำเข้า
+              </button>
+              <button id="format-btn" type="button" class="btn btn-amber">
+                <i data-lucide="disc-3"></i>
+                ฟอร์แมต USB
+              </button>
+              <button id="cancel-btn" type="button" class="btn btn-rose" disabled>
+                <i data-lucide="x-circle"></i>
+                ยกเลิก
               </button>
             </div>
-          </div>
+          </form>
 
-          <div class="field-block">
-            <label for="iso-files" class="field-label">ไฟล์ ISO</label>
-            <p class="field-help">เลือกไฟล์ `.iso` ได้หลายไฟล์ ระบบจะกำหนด/ยืนยัน Game ID ตอนนำเข้า</p>
-            <input
-              id="iso-files"
-              name="files"
-              type="file"
-              accept=".iso"
-              multiple
-              class="field-input file-input"
-              required
-            />
-          </div>
+          <section class="panel panel-console">
+            <div class="console-head">
+              <h2 class="panel-title">
+                <i data-lucide="terminal-square"></i>
+                สถานะการทำงาน
+              </h2>
+              <span id="state-pill" class="state-pill">idle</span>
+            </div>
+            <p id="status-message" class="console-status">พร้อมใช้งาน</p>
 
-          <label class="field-check">
-            <input id="overwrite" type="checkbox" checked />
-            <span>เขียนทับไฟล์เดิม (Overwrite)</span>
-          </label>
+            <div class="meter-shell">
+              <div id="progress-bar" class="meter-bar"></div>
+            </div>
 
-          <div class="action-row">
-            <button id="validate-btn" type="button" class="btn btn-cyan">
-              <i data-lucide="shield-check"></i>
-              ตรวจสอบปลายทาง
-            </button>
-            <button id="import-btn" type="submit" class="btn btn-green">
-              <i data-lucide="upload"></i>
-              เตรียม + นำเข้า
-            </button>
-            <button id="format-btn" type="button" class="btn btn-amber">
-              <i data-lucide="disc-3"></i>
-              ฟอร์แมต USB
-            </button>
-            <button id="cancel-btn" type="button" class="btn btn-rose" disabled>
-              <i data-lucide="x-circle"></i>
-              ยกเลิก
-            </button>
-          </div>
-        </form>
-
-        <section class="panel panel-console">
-          <div class="console-head">
-            <h2 class="panel-title">
-              <i data-lucide="terminal-square"></i>
-              สถานะการทำงาน
-            </h2>
-            <span id="state-pill" class="state-pill">idle</span>
-          </div>
-          <p id="status-message" class="console-status">พร้อมใช้งาน</p>
-
-          <div class="meter-shell">
-            <div id="progress-bar" class="meter-bar"></div>
-          </div>
-
-          <div class="log-shell">
-            <h3 class="log-title">บันทึกเหตุการณ์</h3>
-            <ul id="event-log"></ul>
-          </div>
+            <div class="log-shell">
+              <h3 class="log-title">บันทึกเหตุการณ์</h3>
+              <ul id="event-log"></ul>
+            </div>
+          </section>
         </section>
       </section>
 
-      <section class="panel workflow-panel">
-        <h2 class="panel-title">
-          <i data-lucide="list-checks"></i>
-          ขั้นตอนใช้งาน
-        </h2>
-        <div class="workflow-grid">
-          <article class="step-card"><strong>ขั้นที่ 1</strong><span>เลือกโฟลเดอร์ USB ปลายทาง</span></article>
-          <article class="step-card"><strong>ขั้นที่ 2</strong><span>ตรวจสอบและสร้างโฟลเดอร์ OPL ที่จำเป็น</span></article>
-          <article class="step-card"><strong>ขั้นที่ 3</strong><span>นำเข้าไฟล์ ISO</span></article>
-          <article class="step-card"><strong>ขั้นที่ 4</strong><span>ระบบอ่าน Game ID จาก ISO และบันทึก mapping ใน <code>CFG/game_manifest.json</code></span></article>
-          <article class="step-card"><strong>ขั้นที่ 5</strong><span>ค้นหา ART และตรวจดูภาพตัวอย่าง</span></article>
-          <article class="step-card"><strong>ขั้นที่ 6</strong><span>บันทึก ART ที่เลือกโดยใช้ Game ID เดียวกับเกม</span></article>
-        </div>
-      </section>
-
-      <section class="panel art-panel">
-        <div class="art-head">
-          <h2 class="panel-title">
-            <i data-lucide="image"></i>
-            จัดการ ART
-          </h2>
-          <select id="art-mode" class="field-input slim-select">
-            <option value="manual">อัปโหลดเอง</option>
-            <option value="auto" selected>ค้นหาอัตโนมัติ (RAWG)</option>
-          </select>
-        </div>
-
-        <div class="art-meta-grid">
-          <div class="field-block">
-            <label for="art-game-name" class="field-label">ชื่อเกม (ไม่บังคับ)</label>
-            <input id="art-game-name" type="text" placeholder="Need for Speed Underground 2" class="field-input" />
+      <section id="tab-art-panel" class="tab-pane" hidden>
+        <section class="panel art-panel">
+          <div class="art-head">
+            <h2 class="panel-title">
+              <i data-lucide="image"></i>
+              จัดการ ART
+            </h2>
+            <select id="art-mode" class="field-input slim-select">
+              <option value="manual">อัปโหลดเอง</option>
+              <option value="auto" selected>ค้นหาอัตโนมัติ (RAWG)</option>
+            </select>
           </div>
-          <div class="field-block">
-            <label for="art-source-filename" class="field-label">ชื่อไฟล์ ISO (fallback)</label>
-            <input id="art-source-filename" type="text" placeholder="SLUS_209.46_Need for Speed - Underground 2 (USA).iso" class="field-input" />
+
+          <div class="art-meta-grid">
+            <div class="field-block">
+              <label for="art-game-name" class="field-label">ชื่อเกม (ไม่บังคับ)</label>
+              <input id="art-game-name" type="text" placeholder="Need for Speed Underground 2" class="field-input" />
+            </div>
+            <div class="field-block">
+              <label for="art-source-filename" class="field-label">ชื่อไฟล์ ISO (fallback)</label>
+              <input id="art-source-filename" type="text" placeholder="SLUS_209.46_Need for Speed - Underground 2 (USA).iso" class="field-input" />
+            </div>
           </div>
-        </div>
 
-        <p class="generated-line">
-          Game ID ที่ระบบสร้าง:
-          <span id="generated-game-id" class="generated-id">-</span>
-        </p>
+          <p class="generated-line">
+            Game ID ที่ระบบสร้าง:
+            <span id="generated-game-id" class="generated-id">-</span>
+          </p>
 
-        <div id="manual-art-block" class="mt-5 hidden space-y-3">
-          <p class="field-help">โหมดอัปโหลดเอง: เลือกไฟล์ภาพตามประเภท ART ได้โดยตรง</p>
-          <div class="manual-grid">
-            <label>COV<input id="art-cov" type="file" accept=".jpg,.jpeg,.png" /></label>
-            <label>COV2<input id="art-cov2" type="file" accept=".jpg,.jpeg,.png" /></label>
-            <label>BG<input id="art-bg" type="file" accept=".jpg,.jpeg,.png" /></label>
-            <label>SCR<input id="art-scr" type="file" accept=".jpg,.jpeg,.png" /></label>
-            <label>SCR2<input id="art-scr2" type="file" accept=".jpg,.jpeg,.png" /></label>
-            <label>LGO<input id="art-lgo" type="file" accept=".jpg,.jpeg,.png" /></label>
-            <label>ICO<input id="art-ico" type="file" accept=".jpg,.jpeg,.png" /></label>
-            <label>LAB<input id="art-lab" type="file" accept=".jpg,.jpeg,.png" /></label>
-          </div>
-          <button id="upload-manual-art-btn" type="button" class="btn btn-cyan">
-            <i data-lucide="file-up"></i>
-            อัปโหลด ART แบบกำหนดเอง
-          </button>
-        </div>
-
-        <div id="auto-art-block" class="mt-5">
-          <div class="action-row">
-            <button id="search-auto-art-btn" type="button" class="btn btn-indigo">
-              <i data-lucide="search"></i>
-              ค้นหา ART
-            </button>
-            <button id="save-auto-art-btn" type="button" class="btn btn-green">
-              <i data-lucide="save"></i>
-              บันทึก ART ที่เลือก
+          <div id="manual-art-block" class="mt-5 hidden space-y-3">
+            <p class="field-help">โหมดอัปโหลดเอง: เลือกไฟล์ภาพตามประเภท ART ได้โดยตรง</p>
+            <div class="manual-grid">
+              <label>COV<input id="art-cov" type="file" accept=".jpg,.jpeg,.png" /></label>
+              <label>COV2<input id="art-cov2" type="file" accept=".jpg,.jpeg,.png" /></label>
+              <label>BG<input id="art-bg" type="file" accept=".jpg,.jpeg,.png" /></label>
+              <label>SCR<input id="art-scr" type="file" accept=".jpg,.jpeg,.png" /></label>
+              <label>SCR2<input id="art-scr2" type="file" accept=".jpg,.jpeg,.png" /></label>
+              <label>LGO<input id="art-lgo" type="file" accept=".jpg,.jpeg,.png" /></label>
+              <label>ICO<input id="art-ico" type="file" accept=".jpg,.jpeg,.png" /></label>
+              <label>LAB<input id="art-lab" type="file" accept=".jpg,.jpeg,.png" /></label>
+            </div>
+            <button id="upload-manual-art-btn" type="button" class="btn btn-cyan">
+              <i data-lucide="file-up"></i>
+              อัปโหลด ART แบบกำหนดเอง
             </button>
           </div>
-          <p class="field-help">โหมดอัตโนมัติ: ค้นหาภาพจาก RAWG, เลือกภาพ, กำหนดประเภท ART แล้วบันทึก</p>
-          <div id="auto-art-results" class="auto-art-results"></div>
-        </div>
+
+          <div id="auto-art-block" class="mt-5">
+            <div class="action-row">
+              <button id="search-auto-art-btn" type="button" class="btn btn-indigo">
+                <i data-lucide="search"></i>
+                ค้นหา ART
+              </button>
+              <button id="save-auto-art-btn" type="button" class="btn btn-green">
+                <i data-lucide="save"></i>
+                บันทึก ART ที่เลือก
+              </button>
+            </div>
+            <p class="field-help">โหมดอัตโนมัติ: ค้นหาภาพจาก RAWG, เลือกภาพ, กำหนดประเภท ART แล้วบันทึก</p>
+            <div id="auto-art-results" class="auto-art-results"></div>
+          </div>
+        </section>
       </section>
     </main>
 

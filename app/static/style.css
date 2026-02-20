@@ -78,6 +78,73 @@ body.retro-body::before {
   font-size: 0.92rem;
 }
 
+.hero-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.help-tooltip {
+  position: relative;
+}
+
+.help-trigger {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(33, 230, 255, 0.65);
+  background: rgba(11, 33, 61, 0.95);
+  color: var(--cyan);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  user-select: none;
+  line-height: 1;
+}
+
+.help-popover {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  right: 0;
+  width: min(460px, 88vw);
+  z-index: 20;
+  border: 1.5px solid #2b537e;
+  border-radius: 10px;
+  background: rgba(8, 22, 42, 0.98);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  padding: 0.65rem 0.75rem;
+}
+
+.help-title {
+  margin: 0 0 0.3rem;
+  color: var(--cyan);
+  font-size: 1rem;
+}
+
+.help-steps {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: #d2ecff;
+  display: grid;
+  gap: 0.24rem;
+  font-size: 0.95rem;
+}
+
+.help-steps code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.help-tooltip .help-popover {
+  display: none;
+}
+
+.help-tooltip:hover .help-popover,
+.help-tooltip:focus-within .help-popover {
+  display: block;
+}
+
 .hero-title,
 .panel-title {
   margin: 0.5rem 0 0.35rem;
@@ -113,6 +180,39 @@ body.retro-body::before {
   display: grid;
   grid-template-columns: 1.08fr 0.92fr;
   gap: 1rem;
+}
+
+.tabs-panel {
+  padding: 0.55rem;
+}
+
+.mode-tabs {
+  display: inline-flex;
+  gap: 0.35rem;
+  border: 1px solid #345b86;
+  border-radius: 10px;
+  background: rgba(7, 20, 39, 0.9);
+  padding: 0.24rem;
+}
+
+.mode-tab {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #bbdcf7;
+  padding: 0.36rem 0.7rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.mode-tab:hover {
+  color: #e4f5ff;
+}
+
+.mode-tab.is-active {
+  border-color: #2b537e;
+  background: rgba(33, 230, 255, 0.14);
+  color: #e9fbff;
 }
 
 .field-block {
@@ -273,36 +373,6 @@ body.retro-body::before {
   border-radius: 8px;
   background: rgba(8, 17, 32, 0.86);
   padding: 0.42rem 0.55rem;
-}
-
-.workflow-grid {
-  margin-top: 0.5rem;
-  display: grid;
-  gap: 0.5rem;
-  grid-template-columns: repeat(auto-fit, minmax(min(185px, 100%), 1fr));
-}
-
-.step-card {
-  border: 1px solid #2b537e;
-  border-radius: 10px;
-  background: rgba(10, 21, 38, 0.9);
-  padding: 0.55rem 0.65rem;
-  display: grid;
-  gap: 0.2rem;
-  min-width: 0;
-}
-
-.step-card strong {
-  color: var(--cyan);
-  font-size: 1rem;
-}
-
-.step-card span,
-.step-card code {
-  color: #c9e6ff;
-  font-size: 0.98rem;
-  overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
 .art-head {
