@@ -1,0 +1,14 @@
+:root {
+  --accent: #22d3ee;
+}
+
+* {
+  font-family: "Space Grotesk", sans-serif;
+}
+
+#event-log li {
+  border: 1px solid rgb(51 65 85 / 0.7);
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  background: rgb(15 23 42 / 0.55);
+}
