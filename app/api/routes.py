@@ -17,6 +17,7 @@ from app.services.art_service import (
     download_image,
     enforce_art_search_rate_limit,
     get_cached_art_search,
+    optimize_art_image,
     search_art_candidates,
     store_cached_art_search,
 )
@@ -490,7 +491,7 @@ async def upload_art_manual(
             "LAB": lab,
         }
 
-        saved: list[dict[str, str]] = []
+        saved: list[dict[str, Any]] = []
         for art_type, upload in uploads.items():
             if not upload or not upload.filename:
                 continue
@@ -506,12 +507,13 @@ async def upload_art_manual(
                     status_code=400,
                 )
 
-            dst_ext = ".jpg" if src_ext == ".jpeg" else src_ext
+            raw_content = await upload.read()
+            optimized_content, dst_ext, optimize_info = optimize_art_image(raw_content, art_type, src_ext)
             dst = art_dir / f"{normalized_game_id}_{art_type}{dst_ext}"
             with dst.open("wb") as fh:
-                shutil.copyfileobj(upload.file, fh)
+                fh.write(optimized_content)
             await upload.close()
-            saved.append({"art_type": art_type, "path": str(dst)})
+            saved.append({"art_type": art_type, "path": str(dst), "optimize": optimize_info})
 
         if not saved:
             return api_response(
@@ -626,14 +628,15 @@ async def save_art_auto(payload: ArtSaveRequest):
                 status_code=400,
             )
 
-        saved: list[dict[str, str]] = []
+        saved: list[dict[str, Any]] = []
         for selection in unique_selections:
             art_type = selection.art_type.strip().upper()
             content, ext = download_image(selection.image_url.strip(), art_type)
-            destination = art_dir / f"{game_id}_{art_type}{ext}"
+            optimized_content, optimized_ext, optimize_info = optimize_art_image(content, art_type, ext)
+            destination = art_dir / f"{game_id}_{art_type}{optimized_ext}"
             with destination.open("wb") as fh:
-                fh.write(content)
-            saved.append({"art_type": art_type, "path": str(destination)})
+                fh.write(optimized_content)
+            saved.append({"art_type": art_type, "path": str(destination), "optimize": optimize_info})
 
         return api_response(
             status="success",

@@ -7,8 +7,10 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Optional
+from PIL import Image
 
 from app.core.constants import (
     ART_ALLOWED_EXT,
@@ -165,3 +167,99 @@ def download_image(image_url: str, art_type: str) -> tuple[bytes, str]:
     if ext not in {".jpg", ".png"}:
         raise ValueError("unsupported image extension")
     return content, ext
+
+
+ART_TARGET_SIZE = {
+    "COV": (256, 364),
+    "COV2": (256, 364),
+    "BG": (512, 288),
+    "SCR": (320, 180),
+    "SCR2": (320, 180),
+    "LGO": (256, 128),
+    "ICO": (128, 128),
+    "LAB": (256, 64),
+}
+
+ART_TARGET_BYTES = {
+    "COV": 120 * 1024,
+    "COV2": 120 * 1024,
+    "BG": 180 * 1024,
+    "SCR": 110 * 1024,
+    "SCR2": 110 * 1024,
+    "LGO": 90 * 1024,
+    "ICO": 60 * 1024,
+    "LAB": 50 * 1024,
+}
+
+
+def _flatten_alpha(img: Image.Image) -> Image.Image:
+    if img.mode in {"RGBA", "LA"}:
+        base = Image.new("RGB", img.size, (0, 0, 0))
+        base.paste(img, mask=img.split()[-1])
+        return base
+    if img.mode == "P":
+        return img.convert("RGB")
+    if img.mode != "RGB":
+        return img.convert("RGB")
+    return img
+
+
+def optimize_art_image(content: bytes, art_type: str, source_ext: Optional[str] = None) -> tuple[bytes, str, dict[str, Any]]:
+    normalized_type = art_type.strip().upper()
+    if normalized_type not in ART_EXT_HINT:
+        raise ValueError(f"invalid art type: {normalized_type}")
+
+    target_width, target_height = ART_TARGET_SIZE[normalized_type]
+    target_bytes = ART_TARGET_BYTES[normalized_type]
+    keep_png = normalized_type in {"LGO", "ICO"}
+
+    with Image.open(BytesIO(content)) as raw_img:
+        img = raw_img.copy()
+
+    img.thumbnail((target_width, target_height), Image.Resampling.LANCZOS)
+
+    output = BytesIO()
+    if keep_png:
+        if img.mode not in {"RGBA", "LA"}:
+            img = img.convert("RGBA")
+        # Quantize palette to reduce size while preserving transparency.
+        img = img.quantize(colors=128)
+        img.save(output, format="PNG", optimize=True, compress_level=9)
+        out_ext = ".png"
+    else:
+        jpg_img = _flatten_alpha(img)
+        best_bytes: Optional[bytes] = None
+        best_size: Optional[int] = None
+        for quality in (72, 66, 60, 54, 48):
+            output = BytesIO()
+            jpg_img.save(
+                output,
+                format="JPEG",
+                quality=quality,
+                optimize=True,
+                progressive=True,
+                subsampling="4:2:0",
+            )
+            candidate = output.getvalue()
+            size = len(candidate)
+            if best_size is None or size < best_size:
+                best_size = size
+                best_bytes = candidate
+            if size <= target_bytes:
+                break
+        if not best_bytes:
+            raise ValueError("failed to optimize image")
+        out_ext = ".jpg"
+        output = BytesIO(best_bytes)
+
+    optimized = output.getvalue()
+    details = {
+        "art_type": normalized_type,
+        "source_ext": (source_ext or "").lower(),
+        "output_ext": out_ext,
+        "original_bytes": len(content),
+        "optimized_bytes": len(optimized),
+        "width": img.width,
+        "height": img.height,
+    }
+    return optimized, out_ext, details
