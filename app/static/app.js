@@ -104,7 +104,7 @@ const controllableElements = [
 function setState(nextState, message = "") {
   const allowed = TRANSITIONS[currentState] || [];
   if (currentState !== nextState && !allowed.includes(nextState)) {
-    appendLog("error", `invalid transition: ${currentState} -> ${nextState}`);
+    appendLog("error", `การเปลี่ยนสถานะไม่ถูกต้อง: ${currentState} -> ${nextState}`);
     currentState = STATES.FAILED;
   } else {
     currentState = nextState;
@@ -116,7 +116,7 @@ function setState(nextState, message = "") {
   updateControlAvailability();
 }
 
-function setLoading(loading, text = "Working...") {
+function setLoading(loading, text = "กำลังดำเนินการ...") {
   isLoading = loading;
   loadingOverlay.classList.toggle("hidden", !loading);
   loadingOverlay.classList.toggle("flex", loading);
@@ -157,15 +157,15 @@ function endOperation() {
 }
 
 function defaultMessageForState(state) {
-  if (state === STATES.IDLE) return "Ready.";
-  if (state === STATES.VALIDATING) return "Validating target.";
-  if (state === STATES.VALIDATED) return "Target validated.";
-  if (state === STATES.FORMATTING) return "Formatting USB.";
-  if (state === STATES.ARTING) return "Managing ART.";
-  if (state === STATES.IMPORTING) return "Importing files.";
-  if (state === STATES.COMPLETED) return "Import completed.";
-  if (state === STATES.CANCELLED) return "Operation cancelled.";
-  return "Operation failed.";
+  if (state === STATES.IDLE) return "พร้อมใช้งาน";
+  if (state === STATES.VALIDATING) return "กำลังตรวจสอบปลายทาง";
+  if (state === STATES.VALIDATED) return "ตรวจสอบปลายทางสำเร็จ";
+  if (state === STATES.FORMATTING) return "กำลังฟอร์แมต USB";
+  if (state === STATES.ARTING) return "กำลังจัดการ ART";
+  if (state === STATES.IMPORTING) return "กำลังนำเข้าไฟล์";
+  if (state === STATES.COMPLETED) return "นำเข้าเสร็จสิ้น";
+  if (state === STATES.CANCELLED) return "ยกเลิกการทำงานแล้ว";
+  return "การทำงานล้มเหลว";
 }
 
 function appendLog(kind, message, details = null) {
@@ -209,13 +209,13 @@ async function callApi(url, options) {
   try {
     data = await response.json();
   } catch (_err) {
-    data = { status: "error", state: "failed", message: "non-json response", details: {} };
+    data = { status: "error", state: "failed", message: "รูปแบบข้อมูลตอบกลับไม่ถูกต้อง", details: {} };
   }
 
   renderSteps(data.steps || []);
 
   if (!response.ok || data.status !== "success") {
-    const msg = data.message || "request failed";
+    const msg = data.message || "คำขอล้มเหลว";
     const error = new Error(msg);
     error.payload = data;
     throw error;
@@ -227,13 +227,13 @@ async function callApi(url, options) {
 validateBtn.addEventListener("click", async () => {
   const targetPath = targetPathInput.value.trim();
   if (!targetPath) {
-    appendLog("error", "target path is required");
+    appendLog("error", "ต้องระบุโฟลเดอร์ปลายทาง");
     return;
   }
 
   activeController = new AbortController();
-  startOperation("Validating target...");
-  setState(STATES.VALIDATING, "Validating target path and structure.");
+  startOperation("กำลังตรวจสอบปลายทาง..");
+  setState(STATES.VALIDATING, "กำลังตรวจสอบปลายทางและโครงสร้างโฟลเดอร์");
 
   try {
     const payload = { target_path: targetPath, ensure_folders: true };
@@ -248,13 +248,13 @@ validateBtn.addEventListener("click", async () => {
     appendLog("success", result.message, result.details);
   } catch (err) {
     if (err.name === "AbortError") {
-      setState(STATES.CANCELLED, "Validation cancelled.");
-      appendLog("info", "validation cancelled by user");
+      setState(STATES.CANCELLED, "ยกเลิกการตรวจสอบแล้ว");
+      appendLog("info", "ผู้ใช้ยกเลิกการตรวจสอบ");
       return;
     }
 
-    setState(STATES.FAILED, err.message || "Validation failed.");
-    appendLog("error", err.message || "validation failed", err.payload?.details || null);
+    setState(STATES.FAILED, err.message || "การตรวจสอบล้มเหลว");
+    appendLog("error", err.message || "การตรวจสอบล้มเหลว", err.payload?.details || null);
   } finally {
     activeController = null;
     endOperation();
@@ -268,17 +268,17 @@ form.addEventListener("submit", async (event) => {
   const files = isoFilesInput.files;
 
   if (!targetPath) {
-    appendLog("error", "target path is required");
+    appendLog("error", "ต้องระบุโฟลเดอร์ปลายทาง");
     return;
   }
   if (!files || files.length === 0) {
-    appendLog("error", "at least one .iso file is required");
+    appendLog("error", "ต้องเลือกไฟล์ .iso อย่างน้อย 1 ไฟล์");
     return;
   }
 
   const invalidFile = Array.from(files).find((f) => !f.name.toLowerCase().endsWith(".iso"));
   if (invalidFile) {
-    appendLog("error", `invalid file type: ${invalidFile.name}`);
+    appendLog("error", `ชนิดไฟล์ไม่ถูกต้อง: ${invalidFile.name}`);
     return;
   }
 
@@ -288,8 +288,8 @@ form.addEventListener("submit", async (event) => {
   Array.from(files).forEach((file) => formData.append("files", file));
 
   activeController = new AbortController();
-  startOperation("Preparing import...");
-  setState(STATES.IMPORTING, "Preparing and importing files.");
+  startOperation("กำลังเตรียมนำเข้า...");
+  setState(STATES.IMPORTING, "กำลังเตรียมและนำเข้าไฟล์");
 
   try {
     const result = await callApi("/api/import", {
@@ -302,13 +302,13 @@ form.addEventListener("submit", async (event) => {
     appendLog("success", result.message, result.details);
   } catch (err) {
     if (err.name === "AbortError") {
-      setState(STATES.CANCELLED, "Import cancelled.");
-      appendLog("info", "import cancelled by user");
+      setState(STATES.CANCELLED, "ยกเลิกการนำเข้าแล้ว");
+      appendLog("info", "ผู้ใช้ยกเลิกการนำเข้า");
       return;
     }
 
-    setState(STATES.FAILED, err.message || "Import failed.");
-    appendLog("error", err.message || "import failed", err.payload?.details || null);
+    setState(STATES.FAILED, err.message || "การนำเข้าล้มเหลว");
+    appendLog("error", err.message || "การนำเข้าล้มเหลว", err.payload?.details || null);
   } finally {
     activeController = null;
     endOperation();
@@ -323,27 +323,27 @@ cancelBtn.addEventListener("click", () => {
 });
 
 pickFolderBtn.addEventListener("click", async () => {
-  startOperation("Opening folder picker...");
+  startOperation("กำลังเปิดหน้าต่างเลือกโฟลเดอร์...");
   try {
     const result = await callApi("/api/pick-target-folder", {
       method: "GET",
     });
     if (result.details?.target) {
       targetPathInput.value = result.details.target;
-      appendLog("success", "target folder selected", { target: result.details.target });
+      appendLog("success", "เลือกโฟลเดอร์ปลายทางแล้ว", { target: result.details.target });
     }
   } catch (err) {
     const state = err.payload?.state;
     if (state === "cancelled") {
-      appendLog("info", "folder selection cancelled");
+      appendLog("info", "ผู้ใช้ยกเลิกการเลือกโฟลเดอร์");
       return;
     }
 
-    appendLog("error", err.message || "failed to select folder", err.payload?.details || null);
+    appendLog("error", err.message || "เลือกโฟลเดอร์ไม่สำเร็จ", err.payload?.details || null);
     await Swal.fire({
       icon: "error",
-      title: "Select Folder Failed",
-      text: err.message || "Could not open folder picker.",
+      title: "เลือกโฟลเดอร์ไม่สำเร็จ",
+      text: err.message || "ไม่สามารถเปิดหน้าต่างเลือกโฟลเดอร์ได้",
     });
   } finally {
     endOperation();
@@ -355,27 +355,27 @@ formatBtn.addEventListener("click", async () => {
   if (!targetPath) {
     await Swal.fire({
       icon: "warning",
-      title: "Missing target path",
-      text: "Please provide target parent folder first.",
+      title: "ยังไม่ได้ระบุปลายทาง",
+      text: "กรุณาระบุโฟลเดอร์ปลายทางก่อน",
     });
     return;
   }
 
   const confirmResult = await Swal.fire({
     icon: "warning",
-    title: "Format USB?",
+    title: "ฟอร์แมต USB ใช่หรือไม่?",
     html: `
-      <p class="text-left">This will erase all data on the target device.</p>
-      <p class="text-left mt-2">Type <b>FORMAT</b> to confirm.</p>
+      <p class="text-left">การทำงานนี้จะลบข้อมูลทั้งหมดบนอุปกรณ์ปลายทาง</p>
+      <p class="text-left mt-2">พิมพ์ <b>FORMAT</b> เพื่อยืนยัน</p>
       <input id="swal-confirm-phrase" class="swal2-input" placeholder="FORMAT" />
     `,
     showCancelButton: true,
-    confirmButtonText: "Continue",
+    confirmButtonText: "ดำเนินการต่อ",
     confirmButtonColor: "#f59e0b",
     preConfirm: () => {
       const phrase = document.getElementById("swal-confirm-phrase")?.value?.trim() || "";
       if (phrase.toUpperCase() !== "FORMAT") {
-        Swal.showValidationMessage("Please type FORMAT exactly.");
+        Swal.showValidationMessage("กรุณาพิมพ์ FORMAT ให้ถูกต้อง");
         return false;
       }
       return phrase;
@@ -387,13 +387,13 @@ formatBtn.addEventListener("click", async () => {
   }
 
   const labelResult = await Swal.fire({
-    title: "Volume Label",
+    title: "ชื่อไดรฟ์",
     input: "text",
     inputValue: "PS2USB",
-    inputLabel: "Label after format (A-Z, 0-9, _ or -)",
+    inputLabel: "ชื่อหลังฟอร์แมต (A-Z, 0-9, _ หรือ -)",
     showCancelButton: true,
     confirmButtonColor: "#f59e0b",
-    confirmButtonText: "Format now",
+    confirmButtonText: "ฟอร์แมตตอนนี้",
   });
 
   if (!labelResult.isConfirmed) {
@@ -403,8 +403,8 @@ formatBtn.addEventListener("click", async () => {
   const volumeLabel = (labelResult.value || "PS2USB").trim() || "PS2USB";
 
   activeController = new AbortController();
-  startOperation("Formatting USB...");
-  setState(STATES.FORMATTING, "Formatting target USB as FAT32 and preparing structure.");
+  startOperation("กำลังฟอร์แมต USB..");
+  setState(STATES.FORMATTING, "กำลังฟอร์แมต USB เป็น FAT32 และเตรียมโครงสร้าง");
 
   try {
     const result = await callApi("/api/format-target", {
@@ -426,27 +426,27 @@ formatBtn.addEventListener("click", async () => {
     appendLog("success", result.message, result.details);
     await Swal.fire({
       icon: "success",
-      title: "Format Completed",
+      title: "ฟอร์แมตเสร็จสิ้น",
       text: result.message,
     });
   } catch (err) {
     if (err.name === "AbortError") {
-      setState(STATES.CANCELLED, "Format cancelled.");
-      appendLog("info", "format cancelled by user");
+      setState(STATES.CANCELLED, "ยกเลิกการฟอร์แมตแล้ว");
+      appendLog("info", "ผู้ใช้ยกเลิกการฟอร์แมต");
       await Swal.fire({
         icon: "info",
-        title: "Cancelled",
-        text: "Format request was cancelled.",
+        title: "ยกเลิกแล้ว",
+        text: "คำสั่งฟอร์แมตถูกยกเลิก",
       });
       return;
     }
 
-    setState(STATES.FAILED, err.message || "Format failed.");
-    appendLog("error", err.message || "format failed", err.payload?.details || null);
+    setState(STATES.FAILED, err.message || "ฟอร์แมตล้มเหลว");
+    appendLog("error", err.message || "การฟอร์แมตล้มเหลว", err.payload?.details || null);
     await Swal.fire({
       icon: "error",
-      title: "Format Failed",
-      text: err.message || "Format failed.",
+      title: "ฟอร์แมตไม่สำเร็จ",
+      text: err.message || "ฟอร์แมตล้มเหลว",
     });
   } finally {
     activeController = null;
@@ -469,7 +469,7 @@ isoFilesInput.addEventListener("change", () => {
 function ensureArtBasics() {
   const targetPath = targetPathInput.value.trim();
   if (!targetPath) {
-    throw new Error("target path is required");
+    throw new Error("ต้องระบุโฟลเดอร์ปลายทาง");
   }
   return { targetPath };
 }
@@ -481,28 +481,28 @@ function setGeneratedGameId(value) {
 function renderAutoCandidates(candidates) {
   autoArtResults.innerHTML = "";
   if (!candidates.length) {
-    autoArtResults.innerHTML = '<p class="text-sm text-slate-400">No preview candidates found.</p>';
+    autoArtResults.innerHTML = '<p class="text-sm text-slate-400">ไม่พบภาพตัวอย่างที่ค้นหาได้</p>';
     return;
   }
 
   candidates.forEach((candidate, index) => {
     const card = document.createElement("article");
-    card.className = "rounded-lg border border-slate-700 bg-slate-950/60 p-3";
+    card.className = "art-card";
     const suggestedType = ART_TYPES[index % ART_TYPES.length];
     const options = ART_TYPES.map((artType) => `<option value="${artType}" ${artType === suggestedType ? "selected" : ""}>${artType}</option>`).join("");
     card.innerHTML = `
-      <img src="${candidate.thumbnail_url || candidate.image_url}" alt="${candidate.title || "art candidate"}" class="h-36 w-full rounded-md object-cover" />
-      <p class="mt-2 line-clamp-2 text-xs text-slate-300">${candidate.title || "Untitled"}</p>
-      <label class="mt-2 flex items-center gap-2 text-xs text-slate-200">
+      <img src="${candidate.thumbnail_url || candidate.image_url}" alt="${candidate.title || "ตัวเลือกภาพ ART"}" class="art-thumb" />
+      <p class="art-title">${candidate.title || "ไม่มีชื่อ"}</p>
+      <label class="art-toggle">
         <input type="checkbox" data-candidate-id="${candidate.candidate_id}" class="auto-art-check" checked />
-        Use this image
+        ใช้รูปนี้
       </label>
-      <label class="mt-2 block text-xs text-slate-300">Art Type
-        <select class="mt-1 w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-xs text-slate-100 auto-art-type" data-candidate-id="${candidate.candidate_id}">
+      <label class="art-type-label">ประเภท ART
+        <select class="art-type-select auto-art-type" data-candidate-id="${candidate.candidate_id}">
           ${options}
         </select>
       </label>
-      <a class="mt-2 inline-block text-xs text-cyan-300 underline" href="${candidate.image_url}" target="_blank" rel="noreferrer">Open full image</a>
+      <a class="art-link" href="${candidate.image_url}" target="_blank" rel="noreferrer">เปิดภาพเต็ม</a>
     `;
     autoArtResults.appendChild(card);
   });
@@ -513,7 +513,7 @@ uploadManualArtBtn.addEventListener("click", async () => {
   try {
     basics = ensureArtBasics();
   } catch (err) {
-    await Swal.fire({ icon: "warning", title: "Missing required info", text: err.message });
+    await Swal.fire({ icon: "warning", title: "ข้อมูลไม่ครบ", text: err.message });
     return;
   }
 
@@ -540,13 +540,13 @@ uploadManualArtBtn.addEventListener("click", async () => {
     }
   });
   if (!count) {
-    await Swal.fire({ icon: "warning", title: "No files selected", text: "Select at least one ART file." });
+    await Swal.fire({ icon: "warning", title: "ยังไม่ได้เลือกไฟล์", text: "กรุณาเลือกไฟล์ ART อย่างน้อย 1 ไฟล์" });
     return;
   }
 
   activeController = new AbortController();
-  startOperation("Uploading manual ART...");
-  setState(STATES.ARTING, "Uploading manual ART files.");
+  startOperation("กำลังอัปโหลด ART แบบกำหนดเอง...");
+  setState(STATES.ARTING, "กำลังอัปโหลดไฟล์ ART แบบกำหนดเอง");
   try {
     const result = await callApi("/api/art/manual", {
       method: "POST",
@@ -556,14 +556,14 @@ uploadManualArtBtn.addEventListener("click", async () => {
     setGeneratedGameId(result.details?.game_id || "");
     setState(readApiState(result.state), result.message);
     appendLog("success", result.message, result.details);
-    await Swal.fire({ icon: "success", title: "Manual ART uploaded", text: result.message });
+    await Swal.fire({ icon: "success", title: "อัปโหลด ART สำเร็จ", text: result.message });
   } catch (err) {
     if (err.name === "AbortError") {
-      setState(STATES.CANCELLED, "Manual ART upload cancelled.");
+      setState(STATES.CANCELLED, "ยกเลิกการอัปโหลด ART แบบกำหนดเองแล้ว");
       return;
     }
-    setState(STATES.FAILED, err.message || "Manual ART upload failed.");
-    await Swal.fire({ icon: "error", title: "Upload failed", text: err.message || "Manual ART upload failed." });
+    setState(STATES.FAILED, err.message || "การอัปโหลด ART แบบกำหนดเองล้มเหลว");
+    await Swal.fire({ icon: "error", title: "อัปโหลดไม่สำเร็จ", text: err.message || "การอัปโหลด ART แบบกำหนดเองล้มเหลว" });
   } finally {
     activeController = null;
     endOperation();
@@ -575,7 +575,7 @@ searchAutoArtBtn.addEventListener("click", async () => {
   try {
     basics = ensureArtBasics();
   } catch (err) {
-    await Swal.fire({ icon: "warning", title: "Missing required info", text: err.message });
+    await Swal.fire({ icon: "warning", title: "ข้อมูลไม่ครบ", text: err.message });
     return;
   }
 
@@ -587,8 +587,8 @@ searchAutoArtBtn.addEventListener("click", async () => {
   };
 
   activeController = new AbortController();
-  startOperation("Searching ART...");
-  setState(STATES.ARTING, "Searching ART candidates.");
+  startOperation("กำลังค้นหา ART...");
+  setState(STATES.ARTING, "กำลังค้นหาภาพ ART");
   try {
     const result = await callApi("/api/art/search", {
       method: "POST",
@@ -603,11 +603,11 @@ searchAutoArtBtn.addEventListener("click", async () => {
     appendLog("success", result.message, { count: autoCandidates.length, provider: result.details?.provider_used, cache_hit: result.details?.cache_hit });
   } catch (err) {
     if (err.name === "AbortError") {
-      setState(STATES.CANCELLED, "ART search cancelled.");
+      setState(STATES.CANCELLED, "ยกเลิกการค้นหา ART แล้ว");
       return;
     }
-    setState(STATES.FAILED, err.message || "ART search failed.");
-    await Swal.fire({ icon: "error", title: "Search failed", text: err.message || "ART search failed." });
+    setState(STATES.FAILED, err.message || "การค้นหา ART ล้มเหลว");
+    await Swal.fire({ icon: "error", title: "ค้นหาไม่สำเร็จ", text: err.message || "การค้นหา ART ล้มเหลว" });
   } finally {
     activeController = null;
     endOperation();
@@ -619,7 +619,7 @@ saveAutoArtBtn.addEventListener("click", async () => {
   try {
     basics = ensureArtBasics();
   } catch (err) {
-    await Swal.fire({ icon: "warning", title: "Missing required info", text: err.message });
+    await Swal.fire({ icon: "warning", title: "ข้อมูลไม่ครบ", text: err.message });
     return;
   }
 
@@ -639,13 +639,13 @@ saveAutoArtBtn.addEventListener("click", async () => {
   });
 
   if (!selections.length) {
-    await Swal.fire({ icon: "warning", title: "No selection", text: "Select at least one preview image." });
+    await Swal.fire({ icon: "warning", title: "ยังไม่ได้เลือก", text: "กรุณาเลือกภาพอย่างน้อย 1 รูป" });
     return;
   }
 
   activeController = new AbortController();
-  startOperation("Saving selected ART...");
-  setState(STATES.ARTING, "Saving selected ART files.");
+  startOperation("กำลังบันทึก ART ที่เลือก...");
+  setState(STATES.ARTING, "กำลังบันทึกไฟล์ ART ที่เลือก");
   try {
     const result = await callApi("/api/art/save-auto", {
       method: "POST",
@@ -663,16 +663,16 @@ saveAutoArtBtn.addEventListener("click", async () => {
     appendLog("success", result.message, result.details);
     const skippedCount = (result.details?.skipped_duplicates || []).length;
     if (skippedCount > 0) {
-      appendLog("info", `Skipped ${skippedCount} duplicate art type selections.`);
+      appendLog("info", `ข้าม ${skippedCount} รายการที่เลือกประเภท ART ซ้ำ`);
     }
-    await Swal.fire({ icon: "success", title: "Auto ART saved", text: result.message });
+    await Swal.fire({ icon: "success", title: "บันทึก ART อัตโนมัติสำเร็จ", text: result.message });
   } catch (err) {
     if (err.name === "AbortError") {
-      setState(STATES.CANCELLED, "Auto ART save cancelled.");
+      setState(STATES.CANCELLED, "ยกเลิกการบันทึก ART อัตโนมัติแล้ว");
       return;
     }
-    setState(STATES.FAILED, err.message || "Auto ART save failed.");
-    await Swal.fire({ icon: "error", title: "Save failed", text: err.message || "Auto ART save failed." });
+    setState(STATES.FAILED, err.message || "การบันทึก ART อัตโนมัติล้มเหลว");
+    await Swal.fire({ icon: "error", title: "บันทึกไม่สำเร็จ", text: err.message || "การบันทึก ART อัตโนมัติล้มเหลว" });
   } finally {
     activeController = null;
     endOperation();
