@@ -1,0 +1,15 @@
+services:
+  ps2fd:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ps2fd
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    # Optional: mount host USB parent path to access in container.
+    # Example on macOS: map /Volumes to /mnt/volumes and use /mnt/volumes/PS2USB in UI.
+    # volumes:
+    #   - /Volumes:/mnt/volumes:rw

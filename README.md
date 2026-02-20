@@ -32,6 +32,35 @@ uvicorn app.main:app --reload
 
 Open `http://127.0.0.1:8000`.
 
+## Run With Docker (Recommended for consistent environment)
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Open `http://127.0.0.1:8000`.
+
+### Host path mapping for USB/flash drive access
+
+If you want to import directly to a host-mounted flash drive, mount host path into the container.
+
+Example (macOS):
+
+```yaml
+# docker-compose.yml
+services:
+  ps2fd:
+    volumes:
+      - /Volumes:/mnt/volumes:rw
+```
+
+Then use target path like `/mnt/volumes/PS2USB` in the app.
+
+Notes:
+- `GET /api/pick-target-folder` (macOS folder picker) does not work inside Docker container UI.
+- `POST /api/format-target` relies on host `diskutil` and is intended for native macOS run, not containerized usage.
+
 ## Auto ART Provider (RAWG)
 
 Set values in `.env` before running:
