@@ -22,6 +22,7 @@ from app.services.art_service import (
 )
 from app.services.format_service import is_macos, run_cmd, sanitize_volume_label, validate_format_target, wait_mount_point
 from app.services.game_service import (
+    build_opl_iso_filename,
     derive_game_name,
     extract_game_id_from_iso,
     manifest_path,
@@ -789,9 +790,11 @@ async def import_iso(
                 resolved_game_id, _ = resolve_game_id(None, inferred_game_name)
                 id_source = "generated"
 
-            normalized_original_name = original_name
-            if not normalized_original_name.upper().startswith(f"{resolved_game_id}_"):
-                normalized_original_name = f"{resolved_game_id}_{original_name}"
+            normalized_original_name = build_opl_iso_filename(
+                game_id=resolved_game_id,
+                source_filename=original_name,
+                game_name=inferred_game_name,
+            )
 
             file_size = staged_path.stat().st_size
             prepared_files.append(

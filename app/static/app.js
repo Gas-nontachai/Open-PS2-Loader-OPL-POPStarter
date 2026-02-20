@@ -318,15 +318,31 @@ form.addEventListener("submit", async (event) => {
 
     setState(readApiState(result.state), result.message);
     appendLog("success", result.message, result.details);
+    await Swal.fire({
+      icon: "success",
+      title: "นำเข้าสำเร็จ",
+      text: result.message || "นำเข้าไฟล์เสร็จสิ้น",
+    });
   } catch (err) {
     if (err.name === "AbortError") {
       setState(STATES.CANCELLED, "ยกเลิกการนำเข้าแล้ว");
       appendLog("info", "ผู้ใช้ยกเลิกการนำเข้า");
+      await Swal.fire({
+        icon: "info",
+        title: "ยกเลิกแล้ว",
+        text: "การนำเข้าถูกยกเลิก",
+      });
       return;
     }
 
     setState(STATES.FAILED, err.message || "การนำเข้าล้มเหลว");
     appendLog("error", err.message || "การนำเข้าล้มเหลว", err.payload?.details || null);
+    await Swal.fire({
+      icon: "error",
+      title: "นำเข้าไม่สำเร็จ",
+      text: err.message || "การนำเข้าล้มเหลว",
+      footer: err.payload?.next_action ? `คำแนะนำ: ${err.payload.next_action}` : "",
+    });
   } finally {
     activeController = null;
     endOperation();

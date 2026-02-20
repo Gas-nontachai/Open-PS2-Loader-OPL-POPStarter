@@ -196,10 +196,31 @@ def extract_game_id_from_filename(source_filename: Optional[str]) -> Optional[st
     if not source_filename:
         return None
     name = Path(source_filename).name
-    match = re.match(r"^([A-Z]{4}_[0-9]{3}\.[0-9]{2})_", name.upper())
+    match = re.match(r"^([A-Z]{4}_[0-9]{3}\.[0-9]{2})[._\-\s]", name.upper())
     if not match:
         return None
     return match.group(1)
+
+
+def build_opl_iso_filename(game_id: str, source_filename: str, game_name: Optional[str] = None) -> str:
+    original = Path(source_filename).name
+    ext = Path(original).suffix.lower() or ".iso"
+    if ext != ".iso":
+        ext = ".iso"
+
+    resolved_name = (game_name or "").strip()
+    if not resolved_name:
+        try:
+            resolved_name = derive_game_name(None, original)
+        except ValueError:
+            resolved_name = Path(original).stem
+
+    # OPL-safe filename: keep only common characters and collapse separators.
+    cleaned = re.sub(r"[^A-Za-z0-9\-\s\.\(\)\[\]]+", " ", resolved_name)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")
+    if not cleaned:
+        cleaned = "GAME"
+    return f"{game_id}.{cleaned}{ext}"
 
 
 def resolve_game_id_for_target(target: Optional[Path], game_name: Optional[str], source_filename: Optional[str]) -> tuple[str, bool, str]:
