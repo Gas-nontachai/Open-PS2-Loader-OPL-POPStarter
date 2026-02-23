@@ -106,6 +106,36 @@
                 ยกเลิก
               </button>
             </div>
+
+            <div class="games-section">
+              <div class="games-head">
+                <p class="field-label">รายการเกมในไดรฟ์</p>
+                <button id="scan-games-btn" type="button" class="btn btn-indigo">
+                  <i data-lucide="list-search"></i>
+                  สแกนเกมในไดรฟ์
+                </button>
+              </div>
+              <div class="games-table-shell">
+                <table class="games-table">
+                  <thead>
+                    <tr>
+                      <th>Game ID</th>
+                      <th>ชื่อเกม</th>
+                      <th>ไฟล์</th>
+                      <th>โฟลเดอร์</th>
+                      <th>ขนาด</th>
+                      <th>ART</th>
+                      <th>จัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="games-table-body">
+                    <tr>
+                      <td colspan="7" class="games-empty">ยังไม่สแกนเกม</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </form>
 
           <section class="panel panel-console">

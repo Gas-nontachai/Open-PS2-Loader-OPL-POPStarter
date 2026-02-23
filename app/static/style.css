@@ -273,6 +273,68 @@ body.retro-body::before {
   gap: 0.5rem;
 }
 
+.games-section {
+  margin-top: 0.9rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.games-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.games-table-shell {
+  border: 1px solid #2c5078;
+  border-radius: 10px;
+  overflow: auto;
+  background: rgba(7, 16, 31, 0.82);
+}
+
+.games-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.games-table th,
+.games-table td {
+  border-bottom: 1px solid rgba(50, 85, 124, 0.65);
+  padding: 0.4rem 0.48rem;
+  text-align: left;
+  font-size: 0.94rem;
+  vertical-align: top;
+}
+
+.games-table th {
+  color: #b9e4ff;
+  background: rgba(10, 27, 52, 0.78);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.games-empty {
+  color: #88adc8;
+}
+
+.game-id-chip {
+  color: var(--cyan);
+  font-size: 0.9rem;
+  letter-spacing: 0.07em;
+}
+
+.cell-files {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.btn-sm {
+  padding: 0.34rem 0.52rem;
+  font-size: 0.9rem;
+}
+
 .btn {
   border: 1.5px solid transparent;
   border-radius: 10px;
@@ -530,5 +592,10 @@ body.retro-body::before {
 
   .slim-select {
     width: 100%;
+  }
+
+  .games-head {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

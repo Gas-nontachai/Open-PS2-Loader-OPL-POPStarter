@@ -6,4 +6,5 @@ export const store = {
   isLoading: false,
   autoCandidates: [],
   artSourceChoices: [],
+  scannedGames: [],
 };

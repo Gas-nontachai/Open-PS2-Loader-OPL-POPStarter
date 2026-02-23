@@ -4,7 +4,193 @@ import { store } from "../store.js";
 import { callApi } from "../api.js";
 import { appendLog, endOperation, readApiState, setState, startOperation, updateArtSourceChoices } from "../ui.js";
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderGamesTable(games = []) {
+  if (!dom.gamesTableBody) return;
+
+  if (!games.length) {
+    dom.gamesTableBody.innerHTML = `
+      <tr>
+        <td colspan="7" class="games-empty">ไม่พบเกมใน CD/DVD</td>
+      </tr>
+    `;
+    return;
+  }
+
+  dom.gamesTableBody.innerHTML = games
+    .map((game) => {
+      const safeId = game.game_id || "-";
+      const safeName = game.game_name || "-";
+      const safeFile = game.destination_filename || "-";
+      const safeFolder = game.target_folder || "-";
+      const safeSize = game.size_human || "-";
+      const artNames = (game.art_files || []).join(", ");
+      const canDelete = Boolean(game.game_id);
+      return `
+        <tr>
+          <td><span class="game-id-chip">${escapeHtml(safeId)}</span></td>
+          <td>${escapeHtml(safeName)}</td>
+          <td>${escapeHtml(safeFile)}</td>
+          <td>${escapeHtml(safeFolder)}</td>
+          <td>${escapeHtml(safeSize)}</td>
+          <td title="${escapeHtml(artNames)}">${game.art_count || 0}</td>
+          <td>
+            <button
+              type="button"
+              class="btn btn-rose btn-sm delete-game-btn"
+              data-game-id="${escapeHtml(game.game_id || "")}"
+              data-destination-filename="${escapeHtml(safeFile)}"
+              ${canDelete ? "" : "disabled"}
+            >
+              ลบเกม
+            </button>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+async function scanGames({ silent = false } = {}) {
+  const targetPath = dom.targetPathInput.value.trim();
+  if (!targetPath) {
+    if (!silent) {
+      appendLog("error", "ต้องระบุโฟลเดอร์ปลายทางก่อนสแกน");
+    }
+    return [];
+  }
+
+  store.activeController = new AbortController();
+  startOperation("กำลังสแกนเกมในไดรฟ์...");
+  setState(STATES.VALIDATING, "กำลังสแกนเกมในโฟลเดอร์ CD/DVD");
+  try {
+    const result = await callApi("/api/games/scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_path: targetPath }),
+      signal: store.activeController.signal,
+    });
+    const games = result.details?.games || [];
+    store.scannedGames = games;
+    renderGamesTable(games);
+    setState(readApiState(result.state), `สแกนเกมเสร็จแล้ว (${games.length} เกม)`);
+    appendLog("success", `สแกนเกมเสร็จแล้ว (${games.length} เกม)`, { target: targetPath });
+    const sourceChoices = games.map((game) => game.destination_filename).filter(Boolean);
+    if (sourceChoices.length > 0) {
+      updateArtSourceChoices(sourceChoices, sourceChoices[0]);
+    }
+    return games;
+  } catch (err) {
+    if (err.name === "AbortError") {
+      setState(STATES.CANCELLED, "ยกเลิกการสแกนเกมแล้ว");
+      appendLog("info", "ผู้ใช้ยกเลิกการสแกนเกม");
+      return [];
+    }
+    setState(STATES.FAILED, err.message || "การสแกนเกมล้มเหลว");
+    appendLog("error", err.message || "การสแกนเกมล้มเหลว", err.payload?.details || null);
+    if (!silent) {
+      await Swal.fire({
+        icon: "error",
+        title: "สแกนเกมไม่สำเร็จ",
+        text: err.message || "การสแกนเกมล้มเหลว",
+      });
+    }
+    return [];
+  } finally {
+    store.activeController = null;
+    endOperation();
+  }
+}
+
 export function bindImportHandlers() {
+  dom.scanGamesBtn?.addEventListener("click", async () => {
+    await scanGames();
+  });
+
+  dom.gamesTableBody?.addEventListener("click", async (event) => {
+    const target = event.target.closest(".delete-game-btn");
+    if (!target) return;
+
+    const gameId = target.dataset.gameId || "";
+    const destinationFilename = target.dataset.destinationFilename || "";
+    if (!gameId) {
+      await Swal.fire({
+        icon: "warning",
+        title: "ลบไม่ได้",
+        text: "ไม่พบ Game ID ในชื่อไฟล์เกมนี้",
+      });
+      return;
+    }
+
+    const confirm = await Swal.fire({
+      icon: "warning",
+      title: "ยืนยันลบเกม?",
+      html: `
+        <p>Game ID: <b>${gameId}</b></p>
+        <p>ไฟล์: <b>${destinationFilename}</b></p>
+        <p>ระบบจะลบไฟล์เกมและ ART ที่ผูกกับ ID นี้ทั้งหมด</p>
+      `,
+      showCancelButton: true,
+      confirmButtonText: "ลบเลย",
+      confirmButtonColor: "#e11d48",
+      cancelButtonText: "ยกเลิก",
+    });
+    if (!confirm.isConfirmed) return;
+
+    const targetPath = dom.targetPathInput.value.trim();
+    if (!targetPath) {
+      appendLog("error", "ต้องระบุโฟลเดอร์ปลายทาง");
+      return;
+    }
+
+    store.activeController = new AbortController();
+    startOperation("กำลังลบเกม...");
+    setState(STATES.IMPORTING, `กำลังลบเกม ${gameId}`);
+    try {
+      const result = await callApi("/api/games/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target_path: targetPath,
+          game_id: gameId,
+          destination_filename: destinationFilename,
+        }),
+        signal: store.activeController.signal,
+      });
+      appendLog("success", result.message, result.details);
+      setState(readApiState(result.state), `ลบเกม ${gameId} สำเร็จ`);
+      await Swal.fire({
+        icon: "success",
+        title: "ลบเกมสำเร็จ",
+        text: `ลบ ${gameId} เรียบร้อยแล้ว`,
+      });
+      await scanGames({ silent: true });
+    } catch (err) {
+      if (err.name === "AbortError") {
+        setState(STATES.CANCELLED, "ยกเลิกการลบเกมแล้ว");
+        return;
+      }
+      setState(STATES.FAILED, err.message || "ลบเกมไม่สำเร็จ");
+      appendLog("error", err.message || "ลบเกมไม่สำเร็จ", err.payload?.details || null);
+      await Swal.fire({
+        icon: "error",
+        title: "ลบไม่สำเร็จ",
+        text: err.message || "ลบเกมไม่สำเร็จ",
+      });
+    } finally {
+      store.activeController = null;
+      endOperation();
+    }
+  });
+
   dom.validateBtn.addEventListener("click", async () => {
     const targetPath = dom.targetPathInput.value.trim();
     if (!targetPath) {
@@ -27,6 +213,7 @@ export function bindImportHandlers() {
 
       setState(readApiState(result.state), result.message);
       appendLog("success", result.message, result.details);
+      await scanGames({ silent: true });
     } catch (err) {
       if (err.name === "AbortError") {
         setState(STATES.CANCELLED, "ยกเลิกการตรวจสอบแล้ว");
@@ -88,6 +275,7 @@ export function bindImportHandlers() {
         updateArtSourceChoices(importedFiles, importedFiles[0]);
         appendLog("info", `พร้อมจัดการ ART ได้ ${importedFiles.length} เกม (เลือกจากช่อง 'เลือกเกมสำหรับ ART')`);
       }
+      await scanGames({ silent: true });
       await Swal.fire({
         icon: "success",
         title: "นำเข้าสำเร็จ",

@@ -33,3 +33,13 @@ class ArtSaveRequest(BaseModel):
     game_name: Optional[str] = None
     source_filename: Optional[str] = None
     selections: list[ArtSelection]
+
+
+class ScanGamesRequest(BaseModel):
+    target_path: str = Field(min_length=1)
+
+
+class DeleteGameRequest(BaseModel):
+    target_path: str = Field(min_length=1)
+    game_id: str = Field(min_length=1)
+    destination_filename: Optional[str] = None

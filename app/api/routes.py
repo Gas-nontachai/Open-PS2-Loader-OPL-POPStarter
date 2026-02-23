@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shutil
 import tempfile
 import time
@@ -11,7 +12,14 @@ from fastapi.templating import Jinja2Templates
 
 from app.core.constants import ART_ALLOWED_EXT, ART_TYPES, CD_THRESHOLD_BYTES, REQUIRED_FOLDERS
 from app.core.http import api_response, step
-from app.core.schemas import ArtSaveRequest, ArtSearchRequest, FormatTargetRequest, ValidateTargetRequest
+from app.core.schemas import (
+    ArtSaveRequest,
+    ArtSearchRequest,
+    DeleteGameRequest,
+    FormatTargetRequest,
+    ScanGamesRequest,
+    ValidateTargetRequest,
+)
 from app.services.art_service import (
     art_search_cache_key,
     download_image,
@@ -25,8 +33,11 @@ from app.services.format_service import is_macos, run_cmd, sanitize_volume_label
 from app.services.game_service import (
     build_opl_iso_filename,
     derive_game_name,
+    extract_game_id_from_filename,
     extract_game_id_from_iso,
     manifest_path,
+    normalize_game_id,
+    remove_manifest_entries,
     resolve_game_id,
     resolve_game_id_for_target,
     upsert_manifest_entry,
@@ -35,6 +46,15 @@ from app.services.target_service import compute_buffer, ensure_required_folders,
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+
+
+def _should_skip_scan_iso(file_path: Path) -> bool:
+    name = file_path.name
+    if name.startswith("."):
+        return True
+    if name.startswith("._"):
+        return True
+    return False
 
 
 @router.get("/")
@@ -331,6 +351,214 @@ async def validate_target(payload: ValidateTargetRequest):
             status="error",
             state="failed",
             message="unexpected error during validation",
+            details={"error": str(exc)},
+            next_action="retry",
+            steps=steps,
+            status_code=500,
+        )
+
+
+@router.post("/api/games/scan")
+async def scan_games(payload: ScanGamesRequest):
+    steps: list[dict[str, Any]] = []
+    try:
+        target = resolve_target(payload.target_path)
+        steps.append(step("scanning_games", "info", "checking target path", {"target": str(target)}))
+        ok, reason = validate_target_access(target)
+        if not ok:
+            steps.append(step("scanning_games", "error", reason))
+            return api_response(
+                status="error",
+                state="failed",
+                message="target validation failed",
+                details={"target": str(target), "reason": reason},
+                next_action="fix_target_path_or_permissions",
+                steps=steps,
+                status_code=400,
+            )
+
+        art_dir = target / "ART"
+        games: list[dict[str, Any]] = []
+        art_id_pattern = re.compile(r"^([A-Z]{4}_[0-9]{3}\.[0-9]{2})_")
+        art_map: dict[str, list[str]] = {}
+        if art_dir.exists():
+            for art_file in sorted(art_dir.iterdir()):
+                if not art_file.is_file() or art_file.suffix.lower() not in ART_ALLOWED_EXT:
+                    continue
+                match = art_id_pattern.match(art_file.stem.upper())
+                if not match:
+                    continue
+                art_map.setdefault(match.group(1), []).append(art_file.name)
+
+        for folder in ("DVD", "CD"):
+            folder_path = target / folder
+            if not folder_path.exists() or not folder_path.is_dir():
+                continue
+            for iso_file in sorted(folder_path.iterdir()):
+                if not iso_file.is_file():
+                    continue
+                if iso_file.suffix.lower() != ".iso":
+                    continue
+                if _should_skip_scan_iso(iso_file):
+                    continue
+                game_id = extract_game_id_from_filename(iso_file.name)
+                try:
+                    game_name = derive_game_name(None, iso_file.name)
+                except ValueError:
+                    game_name = iso_file.stem
+                game_art = sorted(art_map.get(game_id or "", []))
+                games.append(
+                    {
+                        "game_id": game_id,
+                        "game_name": game_name,
+                        "destination_filename": iso_file.name,
+                        "target_folder": folder,
+                        "path": str(iso_file),
+                        "size_bytes": iso_file.stat().st_size,
+                        "size_human": human_bytes(iso_file.stat().st_size),
+                        "art_count": len(game_art),
+                        "art_files": game_art,
+                    }
+                )
+
+        steps.append(step("scanning_games", "success", "scan completed", {"count": len(games)}))
+        return api_response(
+            status="success",
+            state="completed",
+            message="scan completed",
+            details={"target": str(target), "games": games, "count": len(games)},
+            next_action="choose_game_to_manage",
+            steps=steps,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return api_response(
+            status="error",
+            state="failed",
+            message="unexpected error during game scan",
+            details={"error": str(exc)},
+            next_action="retry",
+            steps=steps,
+            status_code=500,
+        )
+
+
+@router.post("/api/games/delete")
+async def delete_game(payload: DeleteGameRequest):
+    steps: list[dict[str, Any]] = []
+    try:
+        target = resolve_target(payload.target_path)
+        normalized_game_id = normalize_game_id(payload.game_id)
+        requested_filename = (payload.destination_filename or "").strip()
+
+        steps.append(
+            step(
+                "deleting_game",
+                "info",
+                "validating target and game id",
+                {"target": str(target), "game_id": normalized_game_id, "destination_filename": requested_filename},
+            )
+        )
+        ok, reason = validate_target_access(target)
+        if not ok:
+            steps.append(step("deleting_game", "error", reason))
+            return api_response(
+                status="error",
+                state="failed",
+                message="target validation failed",
+                details={"target": str(target), "reason": reason},
+                next_action="fix_target_path_or_permissions",
+                steps=steps,
+                status_code=400,
+            )
+
+        deleted_game_files: list[str] = []
+        candidates: list[Path] = []
+        for folder in ("DVD", "CD"):
+            folder_path = target / folder
+            if not folder_path.exists() or not folder_path.is_dir():
+                continue
+            if requested_filename:
+                candidate = folder_path / Path(requested_filename).name
+                if candidate.exists() and candidate.is_file():
+                    candidates.append(candidate)
+                continue
+            candidates.extend(folder_path.glob(f"{normalized_game_id}*.iso"))
+
+        unique_candidates: list[Path] = []
+        seen_paths: set[str] = set()
+        for candidate in candidates:
+            as_str = str(candidate.resolve())
+            if as_str in seen_paths:
+                continue
+            seen_paths.add(as_str)
+            unique_candidates.append(candidate)
+
+        for game_file in unique_candidates:
+            if game_file.exists() and game_file.is_file():
+                game_file.unlink()
+                deleted_game_files.append(str(game_file))
+
+        if not deleted_game_files:
+            return api_response(
+                status="error",
+                state="failed",
+                message="game file not found",
+                details={"game_id": normalized_game_id, "destination_filename": requested_filename},
+                next_action="scan_games_and_retry",
+                steps=steps,
+                status_code=404,
+            )
+
+        art_dir = target / "ART"
+        deleted_art_files: list[str] = []
+        if art_dir.exists() and art_dir.is_dir():
+            for art_file in art_dir.glob(f"{normalized_game_id}_*.*"):
+                if not art_file.is_file() or art_file.suffix.lower() not in ART_ALLOWED_EXT:
+                    continue
+                art_file.unlink()
+                deleted_art_files.append(str(art_file))
+
+        removed_manifest_entries = remove_manifest_entries(target, normalized_game_id, requested_filename or None)
+        steps.append(
+            step(
+                "deleting_game",
+                "success",
+                "game and art removed",
+                {
+                    "deleted_game_files": len(deleted_game_files),
+                    "deleted_art_files": len(deleted_art_files),
+                    "removed_manifest_entries": removed_manifest_entries,
+                },
+            )
+        )
+        return api_response(
+            status="success",
+            state="completed",
+            message="game deleted",
+            details={
+                "game_id": normalized_game_id,
+                "deleted_game_files": deleted_game_files,
+                "deleted_art_files": deleted_art_files,
+                "removed_manifest_entries": removed_manifest_entries,
+            },
+            next_action="refresh_game_list",
+            steps=steps,
+        )
+    except ValueError as exc:
+        return api_response(
+            status="error",
+            state="failed",
+            message=str(exc),
+            details={},
+            next_action="fix_request_and_retry",
+            steps=steps,
+            status_code=400,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return api_response(
+            status="error",
+            state="failed",
+            message="unexpected error during game deletion",
             details={"error": str(exc)},
             next_action="retry",
             steps=steps,

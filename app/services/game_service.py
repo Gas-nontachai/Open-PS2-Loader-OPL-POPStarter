@@ -196,10 +196,42 @@ def extract_game_id_from_filename(source_filename: Optional[str]) -> Optional[st
     if not source_filename:
         return None
     name = Path(source_filename).name
-    match = re.match(r"^([A-Z]{4}_[0-9]{3}\.[0-9]{2})[._\-\s]", name.upper())
+    match = re.match(r"^([A-Z]{4}_[0-9]{3}\.[0-9]{2})(?:[._\-\s]|$)", name.upper())
     if not match:
         return None
     return match.group(1)
+
+
+def remove_manifest_entries(target: Path, game_id: str, destination_filename: Optional[str] = None) -> int:
+    manifest = load_manifest(target)
+    entries = manifest.get("entries", [])
+    if not isinstance(entries, list):
+        return 0
+
+    normalized_id = normalize_game_id(game_id)
+    filename = (destination_filename or "").strip()
+    filtered: list[dict[str, Any]] = []
+    removed = 0
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            filtered.append(entry)
+            continue
+
+        entry_game_id = str(entry.get("game_id", "")).strip().upper()
+        entry_destination = str(entry.get("destination_filename", "")).strip()
+        entry_source = str(entry.get("source_filename", "")).strip()
+        should_remove = entry_game_id == normalized_id and (
+            not filename or entry_destination == filename or entry_source == filename
+        )
+        if should_remove:
+            removed += 1
+            continue
+        filtered.append(entry)
+
+    manifest["entries"] = filtered
+    save_manifest(target, manifest)
+    return removed
 
 
 def build_opl_iso_filename(game_id: str, source_filename: str, game_name: Optional[str] = None) -> str:

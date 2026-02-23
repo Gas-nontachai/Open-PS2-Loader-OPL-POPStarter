@@ -36,6 +36,7 @@ export function bindCommonHandlers() {
       if (result.details?.target) {
         dom.targetPathInput.value = result.details.target;
         appendLog("success", "เลือกโฟลเดอร์ปลายทางแล้ว", { target: result.details.target });
+        dom.scanGamesBtn?.click();
       }
     } catch (err) {
       const state = err.payload?.state;

@@ -6,8 +6,10 @@ export const dom = {
   form: document.getElementById("import-form"),
   validateBtn: document.getElementById("validate-btn"),
   importBtn: document.getElementById("import-btn"),
+  scanGamesBtn: document.getElementById("scan-games-btn"),
   formatBtn: document.getElementById("format-btn"),
   cancelBtn: document.getElementById("cancel-btn"),
+  gamesTableBody: document.getElementById("games-table-body"),
   pickFolderBtn: document.getElementById("pick-folder-btn"),
   artModeSelect: document.getElementById("art-mode"),
   manualArtBlock: document.getElementById("manual-art-block"),
@@ -42,6 +44,7 @@ export const dom = {
 export const controllableElements = [
   dom.validateBtn,
   dom.importBtn,
+  dom.scanGamesBtn,
   dom.formatBtn,
   dom.pickFolderBtn,
   dom.uploadManualArtBtn,
