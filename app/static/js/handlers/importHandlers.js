@@ -59,6 +59,35 @@ function renderGamesTable(games = []) {
     .join("");
 }
 
+function formatPercent(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return "0.00%";
+  return `${numeric.toFixed(2)}%`;
+}
+
+function renderStorageSummary(games = [], storage = null) {
+  if (!dom.storageSummary) return;
+
+  const gameCount = games.length;
+  const gamesBytes = games.reduce((total, game) => total + Number(game.size_bytes || 0), 0);
+  const fallbackGamesSize = `${(gamesBytes / (1024 ** 3)).toFixed(2)} GB`;
+  const safeStorage = storage || {};
+
+  const gamesSizeText = safeStorage.games_human || fallbackGamesSize;
+  const usedSizeText = safeStorage.used_human || "-";
+  const freeSizeText = safeStorage.free_human || "-";
+  const totalSizeText = safeStorage.total_human || "-";
+  const usagePercentText = formatPercent(safeStorage.used_percent || 0);
+  const usageBarPercent = Math.min(Math.max(Number(safeStorage.used_percent || 0), 0), 100);
+
+  dom.summaryGameCount.textContent = String(gameCount);
+  dom.summaryGamesSize.textContent = gamesSizeText;
+  dom.summaryUsedSize.textContent = usedSizeText;
+  dom.summaryFreeSize.textContent = freeSizeText;
+  dom.storageMeterBar.style.width = `${usageBarPercent}%`;
+  dom.summaryUsageText.textContent = usedSizeText === "-" ? "ยังไม่สแกน" : `${usedSizeText} / ${totalSizeText} (${usagePercentText})`;
+}
+
 async function scanGames({ silent = false } = {}) {
   const targetPath = dom.targetPathInput.value.trim();
   if (!targetPath) {
@@ -79,8 +108,11 @@ async function scanGames({ silent = false } = {}) {
       signal: store.activeController.signal,
     });
     const games = result.details?.games || [];
+    const storage = result.details?.storage || null;
     store.scannedGames = games;
+    store.storageSummary = storage;
     renderGamesTable(games);
+    renderStorageSummary(games, storage);
     setState(readApiState(result.state), `สแกนเกมเสร็จแล้ว (${games.length} เกม)`);
     appendLog("success", `สแกนเกมเสร็จแล้ว (${games.length} เกม)`, { target: targetPath });
     const sourceChoices = games.map((game) => game.destination_filename).filter(Boolean);

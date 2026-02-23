@@ -24,6 +24,13 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body.retro-body {
   margin: 0;
   color: var(--text);
@@ -53,9 +60,19 @@ body.retro-body::before {
 
 .retro-shell {
   width: min(1200px, 94vw);
+  max-width: 100%;
   margin: 1.25rem auto 2.25rem;
   display: grid;
   gap: 1rem;
+}
+
+.tab-pane,
+.main-grid,
+.main-grid > *,
+.panel,
+.panel-form,
+.panel-console {
+  min-width: 0;
 }
 
 .hero-panel,
@@ -286,6 +303,56 @@ body.retro-body::before {
   gap: 0.5rem;
 }
 
+.storage-summary {
+  border: 1px solid #2d527d;
+  border-radius: 10px;
+  background: rgba(8, 20, 38, 0.9);
+  padding: 0.5rem 0.6rem 0.55rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem 0.6rem;
+}
+
+.storage-stat {
+  display: grid;
+  gap: 0.06rem;
+}
+
+.storage-label {
+  color: #93bddf;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.storage-value {
+  color: #e5f7ff;
+  font-size: 0.98rem;
+}
+
+.storage-meter-shell {
+  grid-column: 1 / -1;
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid #2b507a;
+  overflow: hidden;
+  background: #071224;
+}
+
+.storage-meter-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #34d8ff, #45f08f);
+  transition: width 220ms ease;
+}
+
+.storage-usage-text {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #a6cdec;
+  font-size: 0.88rem;
+}
+
 .games-table-shell {
   border: 1px solid #2c5078;
   border-radius: 10px;
@@ -435,6 +502,16 @@ body.retro-body::before {
   border-radius: 8px;
   background: rgba(8, 17, 32, 0.86);
   padding: 0.42rem 0.55rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+#event-log pre {
+  margin: 0.35rem 0 0;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .art-head {
@@ -597,5 +674,15 @@ body.retro-body::before {
   .games-head {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .storage-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .field-row {
+    grid-template-columns: 1fr;
   }
 }

@@ -7,4 +7,5 @@ export const store = {
   autoCandidates: [],
   artSourceChoices: [],
   scannedGames: [],
+  storageSummary: null,
 };

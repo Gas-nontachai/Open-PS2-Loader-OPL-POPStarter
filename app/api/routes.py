@@ -421,12 +421,29 @@ async def scan_games(payload: ScanGamesRequest):
                     }
                 )
 
-        steps.append(step("scanning_games", "success", "scan completed", {"count": len(games)}))
+        total_games_bytes = sum(int(game.get("size_bytes", 0)) for game in games)
+        usage = shutil.disk_usage(target)
+        used_percent = 0.0
+        if usage.total > 0:
+            used_percent = round((usage.used / usage.total) * 100, 2)
+        storage = {
+            "games_bytes": total_games_bytes,
+            "games_human": human_bytes(total_games_bytes),
+            "total_bytes": usage.total,
+            "total_human": human_bytes(usage.total),
+            "used_bytes": usage.used,
+            "used_human": human_bytes(usage.used),
+            "free_bytes": usage.free,
+            "free_human": human_bytes(usage.free),
+            "used_percent": used_percent,
+        }
+
+        steps.append(step("scanning_games", "success", "scan completed", {"count": len(games), "storage": storage}))
         return api_response(
             status="success",
             state="completed",
             message="scan completed",
-            details={"target": str(target), "games": games, "count": len(games)},
+            details={"target": str(target), "games": games, "count": len(games), "storage": storage},
             next_action="choose_game_to_manage",
             steps=steps,
         )
