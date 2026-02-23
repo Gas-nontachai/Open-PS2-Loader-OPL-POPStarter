@@ -13,7 +13,19 @@ import {
   updateArtSourceChoices,
 } from "../ui.js";
 
+function syncImportSectionVisibility() {
+  const hasTargetPath = Boolean(dom.targetPathInput?.value.trim());
+  if (dom.importControlsSection) {
+    dom.importControlsSection.hidden = !hasTargetPath;
+  }
+  if (dom.gamesSection) {
+    dom.gamesSection.hidden = !hasTargetPath;
+  }
+}
+
 export function bindCommonHandlers() {
+  syncImportSectionVisibility();
+
   window.addEventListener("beforeunload", (event) => {
     if (!shouldBlockTabClose()) {
       return;
@@ -35,6 +47,7 @@ export function bindCommonHandlers() {
       const result = await callApi("/api/pick-target-folder", { method: "GET" });
       if (result.details?.target) {
         dom.targetPathInput.value = result.details.target;
+        syncImportSectionVisibility();
         appendLog("success", "เลือกโฟลเดอร์ปลายทางแล้ว", { target: result.details.target });
         dom.scanGamesBtn?.click();
       }
@@ -126,6 +139,7 @@ export function bindCommonHandlers() {
 
       if (result.details?.target) {
         dom.targetPathInput.value = result.details.target;
+        syncImportSectionVisibility();
       }
 
       setState(readApiState(result.state), result.message);
@@ -160,6 +174,9 @@ export function bindCommonHandlers() {
       updateArtSourceChoices(uploaded, uploaded[0]);
     }
   });
+
+  dom.targetPathInput.addEventListener("input", syncImportSectionVisibility);
+  dom.targetPathInput.addEventListener("change", syncImportSectionVisibility);
 
   if (dom.artSourceSelect) {
     dom.artSourceSelect.addEventListener("change", () => {

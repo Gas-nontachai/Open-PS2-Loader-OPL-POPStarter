@@ -6,6 +6,8 @@ export const dom = {
   form: document.getElementById("import-form"),
   validateBtn: document.getElementById("validate-btn"),
   importBtn: document.getElementById("import-btn"),
+  importControlsSection: document.getElementById("import-controls-section"),
+  gamesSection: document.getElementById("games-section"),
   scanGamesBtn: document.getElementById("scan-games-btn"),
   storageSummary: document.getElementById("storage-summary"),
   summaryGameCount: document.getElementById("summary-game-count"),

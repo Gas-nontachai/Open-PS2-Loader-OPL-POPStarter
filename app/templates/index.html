@@ -69,45 +69,47 @@
               </div>
             </div>
 
-            <div class="field-block">
-              <label for="iso-files" class="field-label">ไฟล์ ISO</label>
-              <p class="field-help">เลือกไฟล์ `.iso` ได้หลายไฟล์ ระบบจะกำหนด/ยืนยัน Game ID ตอนนำเข้า</p>
-              <input
-                id="iso-files"
-                name="files"
-                type="file"
-                accept=".iso"
-                multiple
-                class="field-input file-input"
-                required
-              />
+            <div id="import-controls-section" hidden>
+              <div class="field-block">
+                <label for="iso-files" class="field-label">ไฟล์ ISO</label>
+                <p class="field-help">เลือกไฟล์ `.iso` ได้หลายไฟล์ ระบบจะกำหนด/ยืนยัน Game ID ตอนนำเข้า</p>
+                <input
+                  id="iso-files"
+                  name="files"
+                  type="file"
+                  accept=".iso"
+                  multiple
+                  class="field-input file-input"
+                  required
+                />
+              </div>
+
+              <label class="field-check">
+                <input id="overwrite" type="checkbox" checked />
+                <span>เขียนทับไฟล์เดิม (Overwrite)</span>
+              </label>
+
+              <div class="action-row">
+                <button id="validate-btn" type="button" class="btn btn-cyan">
+                  <i data-lucide="shield-check"></i>
+                  ตรวจสอบปลายทาง
+                </button>
+                <button id="import-btn" type="submit" class="btn btn-green">
+                  <i data-lucide="upload"></i>
+                  เตรียม + นำเข้า
+                </button>
+                <button id="format-btn" type="button" class="btn btn-amber">
+                  <i data-lucide="disc-3"></i>
+                  ฟอร์แมต USB
+                </button>
+                <button id="cancel-btn" type="button" class="btn btn-rose" disabled>
+                  <i data-lucide="x-circle"></i>
+                  ยกเลิก
+                </button>
+              </div>
             </div>
 
-            <label class="field-check">
-              <input id="overwrite" type="checkbox" checked />
-              <span>เขียนทับไฟล์เดิม (Overwrite)</span>
-            </label>
-
-            <div class="action-row">
-              <button id="validate-btn" type="button" class="btn btn-cyan">
-                <i data-lucide="shield-check"></i>
-                ตรวจสอบปลายทาง
-              </button>
-              <button id="import-btn" type="submit" class="btn btn-green">
-                <i data-lucide="upload"></i>
-                เตรียม + นำเข้า
-              </button>
-              <button id="format-btn" type="button" class="btn btn-amber">
-                <i data-lucide="disc-3"></i>
-                ฟอร์แมต USB
-              </button>
-              <button id="cancel-btn" type="button" class="btn btn-rose" disabled>
-                <i data-lucide="x-circle"></i>
-                ยกเลิก
-              </button>
-            </div>
-
-            <div class="games-section">
+            <div id="games-section" class="games-section" hidden>
               <div class="games-head">
                 <p class="field-label">รายการเกมในไดรฟ์</p>
                 <button id="scan-games-btn" type="button" class="btn btn-indigo">
