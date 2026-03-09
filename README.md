@@ -1,103 +1,193 @@
-# PS2 ISO Importer (Web)
+# PS2 TOOLKIT 2000X
 
-Local web app for preparing a PS2 OPL folder structure and importing `.iso` files into `CD/` or `DVD/`.
+Desktop app สำหรับจัดการเกม PS2 บน USB เพื่อใช้งานกับ Open PS2 Loader (OPL)
+สร้างด้วย **Flet + Python** และรองรับการทำงานแบบข้ามแพลตฟอร์ม
 
-## Features
+- จัดการโฟลเดอร์ OPL อัตโนมัติ (`CD`, `DVD`, `ART`, `CFG`, ...)
+- นำเข้า ISO และตั้งชื่อไฟล์ตามรูปแบบ OPL
+- สแกน/ลบเกม พร้อมสรุปพื้นที่ใช้งาน
+- จัดการ ART แบบ Manual และ Auto (RAWG)
+- แสดงสถานะ + progress + event log ระหว่างทำงาน
 
-- Vanilla JS + Tailwind CSS frontend
-- FastAPI backend
-- Target validation with required folder creation
-- Disk space check before import
-- USB format action (FAT32/MBR on macOS) with required folder bootstrap
-- ART manager manual upload by art type
-- ART manager auto fetch via RAWG API with preview-before-save
-- `GAME ID` is extracted from ISO at import (fallback to generated if needed) and stored in `CFG/game_manifest.json`
-- Imported game files are renamed to `${GAME_ID}_${original_filename}` for OPL-friendly matching
-- ART uses the same imported `GAME ID` from manifest for matching
-- Step/state-based API responses and UI logs
+---
 
-## Required Folder Structure
+## 1) Requirements
 
-`APPS`, `ART`, `CD`, `CFG`, `CHT`, `DVD`, `LNG`, `POPS`, `THM`, `VMC`
+- macOS / Windows / Linux
+- Python 3.9+
+- สิทธิ์อ่าน/เขียน USB drive
+- อินเทอร์เน็ต (เฉพาะโหมดค้นหา ART อัตโนมัติ)
 
-## Run
+> แนะนำให้ใช้ virtual environment แยกสำหรับโปรเจกต์
+
+---
+
+## 2) Setup
+
+### 2.1 Clone และเข้าโฟลเดอร์
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+git clone <your-repo-url>
+cd PS2_FD
+```
+
+### 2.2 สร้าง virtual environment และติดตั้ง dependencies
+
+```bash
+python3 -m venv .venv_flet
+source .venv_flet/bin/activate
+pip install --upgrade pip
 pip install -r requirements.txt
-cp .env.example .env
-uvicorn app.main:app --reload
 ```
 
-Open `http://127.0.0.1:8000`.
+### 2.3 ตั้งค่า `.env`
 
-## Run With Docker (Recommended for consistent environment)
+ตัวอย่างไฟล์อยู่ที่ `.env.example`
+
+ค่าที่สำคัญ:
+
+- `RAWG_API_KEY`
+- `ART_SEARCH_CACHE_TTL_SEC`
+- `ART_SEARCH_CACHE_MAX_SIZE`
+- `ART_SEARCH_RATE_LIMIT_PER_MIN`
+- `ART_SEARCH_MIN_INTERVAL_SEC`
+
+---
+
+## 3) Run (Development)
 
 ```bash
-cp .env.example .env
-docker compose up --build
+source .venv_flet/bin/activate
+flet run app/main.py
 ```
 
-Open `http://127.0.0.1:8000`.
+หากเจอปัญหา `flet: command not found` ให้รันใน venv เดิมตามคำสั่งด้านบน (อย่าเรียกจาก global python)
 
-### Host path mapping for USB/flash drive access
+---
 
-If you want to import directly to a host-mounted flash drive, mount host path into the container.
+## 4) การใช้งานหลักในแอป
 
-Example (macOS):
+1. เลือกโฟลเดอร์ปลายทาง (USB)
+2. กดตรวจสอบปลายทาง
+3. เลือกไฟล์ ISO แล้วนำเข้า
+4. กดสแกนเกมเพื่อตรวจรายการ
+5. ไปแท็บ ART เพื่อค้นหา/อัปโหลดภาพ
+6. บันทึก ART ลงโฟลเดอร์ `ART`
 
-```yaml
-# docker-compose.yml
-services:
-  ps2fd:
-    volumes:
-      - /Volumes:/mnt/volumes:rw
-```
+---
 
-Then use target path like `/mnt/volumes/PS2USB` in the app.
+## 5) Build สำหรับแจกจ่าย
 
-Notes:
-- `GET /api/pick-target-folder` (macOS folder picker) does not work inside Docker container UI.
-- `POST /api/format-target` relies on host `diskutil` and is intended for native macOS run, not containerized usage.
-
-## Auto ART Provider (RAWG)
-
-Set values in `.env` before running:
+### 5.1 Build macOS `.app`
 
 ```bash
-RAWG_API_KEY="your_rawg_api_key"
+source .venv_flet/bin/activate
+pip install pyinstaller
+flet pack app/main.py --name "PS2 Toolkit" -y
 ```
 
-- If `RAWG_API_KEY` is missing, auto-art search returns an error.
+ผลลัพธ์อยู่ใน `dist/PS2 Toolkit.app`
 
-## Auto ART Cache + Rate Limit
-
-You can tune these optional `.env` variables:
+### 5.2 สร้าง `.dmg` แบบลากลง Applications
 
 ```bash
-ART_SEARCH_CACHE_TTL_SEC=1800
-ART_SEARCH_CACHE_MAX_SIZE=200
-ART_SEARCH_RATE_LIMIT_PER_MIN=30
-ART_SEARCH_MIN_INTERVAL_SEC=1.5
+# ติดตั้งเครื่องมือครั้งเดียว
+brew install create-dmg
+
+# สร้าง dmg พร้อม layout
+create-dmg \
+  --volname "PS2 Toolkit" \
+  --window-pos 200 120 \
+  --window-size 760 460 \
+  --icon-size 120 \
+  --background "packaging/dmg/background.png" \
+  --icon "PS2 Toolkit.app" 180 260 \
+  --hide-extension "PS2 Toolkit.app" \
+  --app-drop-link 580 260 \
+  "dist/PS2-Toolkit-Installer.dmg" \
+  "dist/PS2 Toolkit.app"
 ```
 
-- Cache stores search results by `game_id + query + max_results`.
-- Per-client request rate limiting protects from bursts.
+### 5.3 ฝั่ง Windows (`.exe`)
 
-## API
+ให้ build บนเครื่อง Windows โดยตรง:
 
-- `GET /api/health`
-- `GET /api/pick-target-folder`
-- `POST /api/validate-target`
-- `POST /api/format-target`
-- `POST /api/art/search`
-- `POST /api/art/manual`
-- `POST /api/art/save-auto`
-- `POST /api/import`
+```bash
+flet pack app/main.py --name "PS2 Toolkit" -y
+```
 
-## Format Notes
+---
 
-- Format action uses `diskutil` and currently supports macOS only.
-- The UI requires typing `FORMAT` before running erase.
-- The app refuses to format internal disks.
+## 6) Project Structure
+
+```text
+app/
+  __init__.py
+  main.py
+  core/
+    constants.py
+    i18n.py
+    schemas.py
+  services/
+    target_service.py
+    format_service.py
+    game_service.py
+    art_service.py
+  controllers/
+    import_controller.py
+    game_controller.py
+    art_controller.py
+  ui/
+    app_layout.py
+    import_tab.py
+    art_tab.py
+    console_panel.py
+    dialogs.py
+    state.py
+packaging/
+  dmg/
+    background.png
+requirements.txt
+```
+
+---
+
+## 7) Troubleshooting
+
+### แอปเปิดแล้วปิดทันที
+
+- อัปเดตล่าสุดแก้แล้วด้วยการเพิ่ม `app/__init__.py`
+- ให้ build ใหม่เสมอหลังดึงโค้ดล่าสุด
+
+### `Please install PyInstaller module`
+
+```bash
+pip install pyinstaller
+```
+
+### macOS เปิดแอปครั้งแรกแล้วโดนบล็อก
+
+- คลิกขวาแอป > `Open`
+- หรือไป `System Settings > Privacy & Security` แล้วกด `Open Anyway`
+
+### เปิดจาก DMG แล้วพอปิดหน้าต่างแอปหาย
+
+- ต้องลาก `PS2 Toolkit.app` ไป `Applications` ก่อน
+- ถ้าเปิดตรงจาก DMG แอปจะหายเมื่อ unmount
+
+---
+
+## 8) Development Notes
+
+- โค้ดเดิมแบบ FastAPI/Web ถูก migrate มา Flet Desktop แล้ว
+- การ format USB ใช้คำสั่งตาม OS:
+  - macOS: `diskutil`
+  - Windows: `diskpart`
+  - Linux: `mkfs.vfat`
+- ฟีเจอร์ Auto ART ต้องมี `RAWG_API_KEY` ใน `.env`
+
+---
+
+## 9) License
+
+ระบุ license ตามที่ใช้งานใน repo นี้ (ถ้ามี)
