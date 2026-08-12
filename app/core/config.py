@@ -12,6 +12,7 @@ class AppConfig:
     last_selected_drive: str = ""
     theme: str = "dark"
     duplicate_behavior: str = "skip"
+    auto_download_artwork: bool = False
 
 
 def load_config(path: Path | None = None) -> AppConfig:

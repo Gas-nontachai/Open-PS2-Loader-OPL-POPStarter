@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from app.core.constants import ART_ALLOWED_EXT, ART_TYPES
-from app.services import drive_service, game_service, target_service, usbextreme_service
+from app.services import art_service, drive_service, game_service, target_service, usbextreme_service
 
 StepCB = Callable[[str, str], None]
 
@@ -54,6 +54,7 @@ def scan_games(target_path: str, on_step: StepCB | None = None, expected_device_
                     game_name = iso_file.stem
                 art_files = sorted(art_map.get(game_id or "", []))
                 cover_file = next((name for name in art_files if "_COV." in name.upper()), None)
+                cover_path = art_dir / cover_file if cover_file else None
                 games.append(
                     {
                         "game_id": game_id,
@@ -65,7 +66,8 @@ def scan_games(target_path: str, on_step: StepCB | None = None, expected_device_
                         "size_human": target_service.human_bytes(iso_file.stat().st_size),
                         "art_count": len(art_files),
                         "art_files": art_files,
-                        "cover_path": str(art_dir / cover_file) if cover_file else None,
+                        "cover_path": str(cover_path) if cover_path else None,
+                        "cover_preview_path": art_service.preview_thumbnail(cover_path, (128, 180)) if cover_path else None,
                     }
                 )
 
@@ -77,6 +79,7 @@ def scan_games(target_path: str, on_step: StepCB | None = None, expected_device_
             art_files = sorted(art_map.get(entry.game_id, []))
             cover_file = next((name for name in art_files if "_COV." in name.upper()), None)
             size_bytes = sum(part.stat().st_size for part in existing_parts)
+            cover_path = art_dir / cover_file if cover_file else None
             games.append(
                 {
                     "game_id": entry.game_id,
@@ -88,7 +91,8 @@ def scan_games(target_path: str, on_step: StepCB | None = None, expected_device_
                     "size_human": target_service.human_bytes(size_bytes),
                     "art_count": len(art_files),
                     "art_files": art_files,
-                    "cover_path": str(art_dir / cover_file) if cover_file else None,
+                    "cover_path": str(cover_path) if cover_path else None,
+                    "cover_preview_path": art_service.preview_thumbnail(cover_path, (128, 180)) if cover_path else None,
                 }
             )
 

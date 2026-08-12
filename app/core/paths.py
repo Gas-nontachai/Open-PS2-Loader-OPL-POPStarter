@@ -20,3 +20,7 @@ def logs_dir() -> Path:
 
 def config_file() -> Path:
     return app_data_dir() / "settings.json"
+
+
+def artwork_cache_dir() -> Path:
+    return app_data_dir() / "artwork-cache"

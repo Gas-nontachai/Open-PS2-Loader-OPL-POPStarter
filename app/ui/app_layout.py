@@ -35,6 +35,8 @@ def build_app(page: ft.Page) -> None:
     available_devices: dict[str, dict] = {}
     active_page = {"name": "home"}
     device_refresh = {"running": False, "requested_page": ""}
+    pending_art_type = {"value": "COV"}
+    auto_art_pending = {"value": False}
 
     iso_picker = ft.FilePicker()
     art_picker = ft.FilePicker()
@@ -43,18 +45,33 @@ def build_app(page: ft.Page) -> None:
     home = HomePage()
     import_page = ImportTab(page, on_pick_isos=lambda: iso_picker.pick_files(allow_multiple=True, allowed_extensions=["iso"]))
     library = LibraryTab()
-    artwork = ArtTab(on_pick_manual_art=lambda _: art_picker.pick_files(allow_multiple=False, allowed_extensions=["png", "jpg", "jpeg", "webp"]))
+    def pick_manual_art(art_type: str) -> None:
+        pending_art_type["value"] = art_type
+        art_picker.pick_files(allow_multiple=False, allowed_extensions=["png", "jpg", "jpeg", "webp"])
+
+    artwork = ArtTab(on_pick_manual_art=pick_manual_art)
     storage = StoragePage()
-    library_and_artwork = ft.Column(
-        [library, ft.Divider(height=32), artwork],
+    library_and_artwork = ft.Tabs(
+        selected_index=0,
+        animation_duration=180,
         expand=True,
-        scroll=ft.ScrollMode.AUTO,
-        spacing=20,
+        tabs=[
+            ft.Tab(text="Artwork", icon=ft.Icons.IMAGE_OUTLINED, content=artwork),
+            ft.Tab(
+                text="Game Files",
+                icon=ft.Icons.SPORTS_ESPORTS,
+                content=ft.Column([library], expand=True, scroll=ft.ScrollMode.AUTO),
+            ),
+        ],
     )
     status_text = ft.Text("Ready")
     status_bar = ft.Container(content=status_text, padding=10, bgcolor=ft.Colors.GREY_900)
 
     settings_language = ft.Text("English")
+    auto_artwork_checkbox = ft.Checkbox(
+        label="Automatically download missing artwork after importing games",
+        value=app_config.auto_download_artwork,
+    )
     settings_toggle = ft.OutlinedButton("ไทย", icon=ft.Icons.LANGUAGE)
     settings = ft.Column(
         expand=True,
@@ -66,10 +83,14 @@ def build_app(page: ft.Page) -> None:
             settings_language,
             settings_toggle,
             ft.Divider(),
+            ft.Text("Artwork", size=18, weight=ft.FontWeight.BOLD),
+            auto_artwork_checkbox,
+            ft.Text("Uses the PS2 Game ID. No API key is required.", color=ft.Colors.GREY_400),
+            ft.Divider(),
             ft.Text(APP_NAME, size=20, weight=ft.FontWeight.BOLD),
             ft.Text(f"Version {APP_VERSION}"),
             ft.Text("PS2 Game Importer & OPL USB Manager"),
-            ft.Text("All game, storage, and artwork features work offline."),
+            ft.Text("Games and manual artwork tools work offline. Online artwork download requires internet."),
         ],
     )
 
@@ -249,7 +270,7 @@ def build_app(page: ft.Page) -> None:
 
     def on_art_result(event: ft.FilePickerResultEvent) -> None:
         if event.files and event.files[0].path:
-            artwork.set_manual_file("COV", event.files[0].path)
+            artwork.set_manual_file(pending_art_type["value"], event.files[0].path)
             page.update()
 
     iso_picker.on_result = on_iso_result
@@ -275,6 +296,9 @@ def build_app(page: ft.Page) -> None:
             storage.show_device(selected_device(), inspect_folders())
             if switch_after:
                 switch_page("library", check_drive=False, rescan=False)
+            if auto_art_pending["value"] and games:
+                auto_art_pending["value"] = False
+                download_all_artwork()
 
         run_async(
             game_controller.scan_games,
@@ -302,6 +326,7 @@ def build_app(page: ft.Page) -> None:
                 )
                 import_page.show_result(True, "นำเข้าสำเร็จ" if i18n.get_lang() == "th" else "Import complete", message)
                 dialogs.show_snackbar(page, f"Import complete: {imported} game(s) imported.")
+                auto_art_pending["value"] = bool(app_config.auto_download_artwork)
                 scan_library(switch_after=True)
             elif result.get("status") == "cancelled":
                 import_page.show_result(False, "ยกเลิกแล้ว" if i18n.get_lang() == "th" else "Import cancelled", "ไฟล์ที่คัดลอกไม่เสร็จถูกลบแล้ว" if i18n.get_lang() == "th" else "Incomplete files were removed.")
@@ -389,6 +414,16 @@ def build_app(page: ft.Page) -> None:
                 break
         switch_page("library", check_drive=False, rescan=False)
 
+    def refresh_artwork_status(game: dict | None = None) -> None:
+        selected = game or artwork.selected_game()
+        game_id = str(selected.get("game_id") or "") if selected else ""
+        if not store.target_path or not game_id:
+            return
+        artwork.set_artwork_status(art_controller.get_artwork_status(store.target_path, game_id))
+        page.update()
+
+    artwork.on_game_selected = refresh_artwork_status
+
     def save_artwork(_: ft.ControlEvent | None = None) -> None:
         game = artwork.selected_game()
         if not game:
@@ -417,19 +452,105 @@ def build_app(page: ft.Page) -> None:
         if not game:
             return
 
+        art_type = str(artwork.type_dropdown.value or "COV")
+        label = str(artwork._status.get(art_type, {}).get("label") or art_type)
+
         def confirmed() -> None:
+            page.close(confirm_dialog)
             run_async(
                 art_controller.remove_artwork,
                 store.target_path,
                 str(game.get("game_id") or ""),
-                "COV",
+                art_type,
                 progress,
                 store.selected_device_id,
+                artwork.selected_filename() if art_type == "SCR" else None,
                 state=AppState.ARTING,
-                done=lambda result: (dialogs.show_snackbar(page, str(result.get("message")), result.get("status") != "success"), scan_library()),
+                done=lambda result: (dialogs.show_snackbar(page, str(result.get("message")), result.get("status") != "success"), refresh_artwork_status()),
             )
 
-        dialogs.show_artwork_remove_dialog(page, str(game.get("game_name") or ""), confirmed)
+        confirm_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Remove {label}?"),
+            content=ft.Text("This artwork will be removed from the selected OPL storage."),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda _: page.close(confirm_dialog)),
+                ft.FilledButton("Remove", on_click=lambda _: confirmed()),
+            ],
+        )
+        page.open(confirm_dialog)
+
+    def download_selected_artwork(_: ft.ControlEvent | None = None, replace: bool = False) -> None:
+        game = artwork.selected_game()
+        if not game:
+            dialogs.show_snackbar(page, "Select a game first.", True)
+            return
+        store.cancel_event.clear()
+        artwork.set_busy(True)
+
+        def after(result: dict) -> None:
+            artwork.set_busy(False)
+            dialogs.show_snackbar(page, str(result.get("message")), result.get("status") not in {"success", "cancelled"})
+            refresh_artwork_status()
+
+        run_async(
+            art_controller.download_artwork,
+            store.target_path,
+            str(game.get("game_id") or ""),
+            replace,
+            progress,
+            store.cancel_event,
+            store.selected_device_id,
+            state=AppState.ARTING,
+            done=after,
+        )
+
+    def confirm_replace_online(_: ft.ControlEvent | None = None) -> None:
+        if not artwork.selected_game():
+            return
+
+        def confirmed(_: ft.ControlEvent) -> None:
+            page.close(confirm_dialog)
+            download_selected_artwork(replace=True)
+
+        confirm_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Replace artwork from online sources?"),
+            content=ft.Text("Existing artwork, including custom images, may be replaced for this game."),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda _: page.close(confirm_dialog)),
+                ft.FilledButton("Replace", on_click=confirmed),
+            ],
+        )
+        page.open(confirm_dialog)
+
+    def download_all_artwork(_: ft.ControlEvent | None = None) -> None:
+        if not store.scanned_games:
+            dialogs.show_snackbar(page, "Scan the game library first.", True)
+            return
+        store.cancel_event.clear()
+        artwork.set_busy(True, batch=True)
+
+        def after(result: dict) -> None:
+            artwork.set_busy(False)
+            dialogs.show_snackbar(page, str(result.get("message")), result.get("status") not in {"success", "cancelled"})
+            scan_library()
+
+        run_async(
+            art_controller.download_artwork_batch,
+            store.target_path,
+            list(store.scanned_games),
+            progress,
+            store.cancel_event,
+            store.selected_device_id,
+            state=AppState.ARTING,
+            done=after,
+        )
+
+    def save_auto_artwork(_: ft.ControlEvent | None = None) -> None:
+        app_config.auto_download_artwork = bool(auto_artwork_checkbox.value)
+        config_service.save_config(app_config)
+        dialogs.show_snackbar(page, "Artwork setting saved.")
 
     def toggle_language(_: ft.ControlEvent | None = None) -> None:
         new_language = "en" if i18n.get_lang() == "th" else "th"
@@ -450,6 +571,11 @@ def build_app(page: ft.Page) -> None:
     library.scan_btn.on_click = lambda _: scan_library()
     artwork.save_btn.on_click = save_artwork
     artwork.remove_btn.on_click = remove_artwork
+    artwork.download_btn.on_click = download_selected_artwork
+    artwork.refresh_btn.on_click = lambda _: refresh_artwork_status()
+    artwork.replace_online_btn.on_click = confirm_replace_online
+    artwork.batch_btn.on_click = download_all_artwork
+    artwork.cancel_batch_btn.on_click = lambda _: store.request_cancel()
     storage.prepare_btn.on_click = prepare_storage
     storage.format_btn.on_click = format_storage
     home.refresh_btn.on_click = refresh_devices
@@ -458,6 +584,7 @@ def build_app(page: ft.Page) -> None:
     home.artwork_btn.on_click = lambda _: switch_page("library")
     home.storage_btn.on_click = lambda _: switch_page("storage")
     settings_toggle.on_click = toggle_language
+    auto_artwork_checkbox.on_change = save_auto_artwork
 
     language_button = ft.TextButton("ไทย", icon=ft.Icons.LANGUAGE, on_click=toggle_language)
     page.appbar = ft.AppBar(title=ft.Text(APP_NAME, weight=ft.FontWeight.BOLD), actions=[language_button])

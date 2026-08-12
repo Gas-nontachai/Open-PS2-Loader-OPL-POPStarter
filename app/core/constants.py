@@ -8,13 +8,12 @@ REQUIRED_FOLDERS = ["APPS", "ART", "CD", "CFG", "CHT", "DVD", "LNG", "POPS", "TH
 CD_THRESHOLD_BYTES = 700 * 1024 * 1024
 SPACE_BUFFER_MIN_BYTES = 500 * 1024 * 1024
 SPACE_BUFFER_RATIO = 0.05
-ART_TYPES = ["COV", "COV2", "BG", "SCR", "SCR2", "LGO", "ICO", "LAB"]
+ART_TYPES = ["COV", "LAB", "COV2", "SCR", "BG", "ICO", "LGO"]
 ART_EXT_HINT = {
     "COV": ".jpg",
     "COV2": ".jpg",
     "BG": ".jpg",
     "SCR": ".jpg",
-    "SCR2": ".jpg",
     "LGO": ".png",
     "ICO": ".png",
     "LAB": ".jpg",
