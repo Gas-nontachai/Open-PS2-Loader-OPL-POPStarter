@@ -1,8 +1,37 @@
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.python-version
+
+# Virtual environments
 .venv/
 .venv-1/
+.venv_flet/
+venv/
+env/
+
+# Build / packaging
+build/
+dist/
+*.spec
+*.part
+
+# Logs and test/cache artifacts
+*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# OS / editor
 .DS_Store
+.idea/
+.vscode/
+
+# Env files
 .env
 .env.*
 !.env.example

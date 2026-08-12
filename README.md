@@ -1,103 +1,121 @@
-# PS2 ISO Importer (Web)
+# PS2 TOOLKIT 2000X
 
-Local web app for preparing a PS2 OPL folder structure and importing `.iso` files into `CD/` or `DVD/`.
+PS2 TOOLKIT 2000X is a Windows desktop utility for importing and managing PS2 games on external USB storage used with Open PS2 Loader (OPL). It is built with Python and Flet and is distributed as a self-contained Windows installer.
+
+## External-storage-only safety
+
+The application only accepts a destination when Windows can map its logical volume to a physical disk whose bus type is explicitly `USB`. This supports:
+
+- USB flash drives
+- External USB HDDs
+- External USB SSDs
+
+Internal SATA/NVMe disks, the Windows/application drive, boot/system/pagefile disks, recovery/hidden volumes, network drives, disconnected devices, and devices with unknown classification are rejected. Safety validation runs again before every storage operation; UI filtering is not treated as authorization.
+
+Formatting remains destructive. Always verify the model, drive letter, capacity and filesystem shown in the confirmation dialog.
 
 ## Features
 
-- Vanilla JS + Tailwind CSS frontend
-- FastAPI backend
-- Target validation with required folder creation
-- Disk space check before import
-- USB format action (FAT32/MBR on macOS) with required folder bootstrap
-- ART manager manual upload by art type
-- ART manager auto fetch via RAWG API with preview-before-save
-- `GAME ID` is extracted from ISO at import (fallback to generated if needed) and stored in `CFG/game_manifest.json`
-- Imported game files are renamed to `${GAME_ID}_${original_filename}` for OPL-friendly matching
-- ART uses the same imported `GAME ID` from manifest for matching
-- Step/state-based API responses and UI logs
+- Beginner-friendly Home, Import Games, combined Games & Artwork, USB/Storage and Settings pages.
+- Guided multi-ISO import with destination and space review.
+- Automatic OPL-compatible splitting for ISO files that exceed the FAT32 single-file limit.
+- Clear import errors and suggested fixes directly on the Import page; no log reading is required.
+- PS2 game ID extraction and OPL-compatible CD/DVD filenames.
+- Background copying with byte progress, cancellation and atomic `.part` files.
+- Game scanning, artwork thumbnails, storage summary and confirmed deletion.
+- Revalidates the physical USB device whenever a page opens and clears stale game/artwork data after disconnect, device replacement or formatting.
+- Manual PNG, JPG, JPEG and WEBP cover upload with preview, conversion, replacement and removal.
+- Idempotent creation/repair of OPL folders.
+- English/Thai UI switch: the toggle displays the language it will switch to.
+- Settings and rotating logs under `%LOCALAPPDATA%\PS2 Toolkit 2000X`.
+- Fully offline operation.
+- Requests Windows Administrator permission when launched so storage operations use one consistent permission context.
 
-## Required Folder Structure
+## Development requirements
 
-`APPS`, `ART`, `CD`, `CFG`, `CHT`, `DVD`, `LNG`, `POPS`, `THM`, `VMC`
+- Windows 10 or Windows 11 x64
+- Python 3.11 recommended; Python 3.9+ supported by the source
+- Inno Setup 6 for installer builds
 
-## Run
+## Development setup and run
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-uvicorn app.main:app --reload
+```powershell
+git clone <repository-url>
+cd Open-PS2-Loader-OPL-POPStarter
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements-dev.txt
+.\scripts\dev.ps1
 ```
 
-Open `http://127.0.0.1:8000`.
+Manual equivalent:
 
-## Run With Docker (Recommended for consistent environment)
-
-```bash
-cp .env.example .env
-docker compose up --build
+```powershell
+.\.venv\Scripts\python.exe -m app.main
 ```
 
-Open `http://127.0.0.1:8000`.
+## Testing
 
-### Host path mapping for USB/flash drive access
-
-If you want to import directly to a host-mounted flash drive, mount host path into the container.
-
-Example (macOS):
-
-```yaml
-# docker-compose.yml
-services:
-  ps2fd:
-    volumes:
-      - /Volumes:/mnt/volumes:rw
+```powershell
+.\.venv\Scripts\python.exe -m pytest
 ```
 
-Then use target path like `/mnt/volumes/PS2USB` in the app.
+Tests use mocked device data and temporary folders. Automated tests never format a physical disk.
 
-Notes:
-- `GET /api/pick-target-folder` (macOS folder picker) does not work inside Docker container UI.
-- `POST /api/format-target` relies on host `diskutil` and is intended for native macOS run, not containerized usage.
+## Build and release
 
-## Auto ART Provider (RAWG)
-
-Set values in `.env` before running:
-
-```bash
-RAWG_API_KEY="your_rawg_api_key"
+```powershell
+.\scripts\build.ps1
+.\scripts\package.ps1
 ```
 
-- If `RAWG_API_KEY` is missing, auto-art search returns an error.
+Or run the complete pipeline:
 
-## Auto ART Cache + Rate Limit
-
-You can tune these optional `.env` variables:
-
-```bash
-ART_SEARCH_CACHE_TTL_SEC=1800
-ART_SEARCH_CACHE_MAX_SIZE=200
-ART_SEARCH_RATE_LIMIT_PER_MIN=30
-ART_SEARCH_MIN_INTERVAL_SEC=1.5
+```powershell
+.\scripts\release.ps1
 ```
 
-- Cache stores search results by `game_id + query + max_results`.
-- Per-client request rate limiting protects from bursts.
+If local PowerShell policy blocks scripts:
 
-## API
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release.ps1
+```
 
-- `GET /api/health`
-- `GET /api/pick-target-folder`
-- `POST /api/validate-target`
-- `POST /api/format-target`
-- `POST /api/art/search`
-- `POST /api/art/manual`
-- `POST /api/art/save-auto`
-- `POST /api/import`
+Outputs:
 
-## Format Notes
+```text
+build\windows\PS2 Toolkit 2000X\PS2 Toolkit 2000X.exe
+dist\PS2-Toolkit-2000X-Setup-1.0.0.exe
+```
 
-- Format action uses `diskutil` and currently supports macOS only.
-- The UI requires typing `FORMAT` before running erase.
-- The app refuses to format internal disks.
+The release version has one source of truth: `APP_VERSION` in `app/core/constants.py`.
+
+## Project structure
+
+```text
+app/core/          configuration, version, paths, logging and errors
+app/models/        normalized game, drive and import models
+app/services/      drive classification, ISO/OPL, artwork and formatting logic
+app/controllers/   UI-independent workflows and safety gates
+app/ui/            responsive Flet pages and dialogs
+docs/              end-user and Windows release guides
+installer/         Inno Setup source
+scripts/           development, test/build and release scripts
+tests/             storage safety and business-logic tests
+```
+
+This is a native packaged Flet desktop application. It does not run an API or web server.
+
+## Troubleshooting
+
+- **No external storage detected:** reconnect the USB device, wait for Windows to mount it, then click Refresh Devices. Unknown or non-USB devices are intentionally hidden.
+- **Device changed/disconnected:** refresh and select the device again. The app will not reuse an old drive-letter identity.
+- **Game ID cannot be read:** use a valid PS2 ISO or a filename beginning with an ID such as `SLUS_209.46`.
+- **Not enough free space:** remove files or choose a larger external USB device.
+- **Build tools missing:** activate `.venv` and reinstall `requirements-dev.txt`.
+- **Installer compiler missing:** install Inno Setup 6.
+- **PowerShell scripts blocked:** use the `-ExecutionPolicy Bypass` command shown above.
+- **Administrator prompt at startup:** expected behavior. Click **Yes** to allow storage management; choosing **No** cancels application startup.
+
+See [docs/HOW_TO_USE.md](docs/HOW_TO_USE.md) and [docs/windows-release.md](docs/windows-release.md).

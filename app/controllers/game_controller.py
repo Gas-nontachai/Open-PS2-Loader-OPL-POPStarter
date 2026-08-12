@@ -1,0 +1,213 @@
+from __future__ import annotations
+
+import re
+import shutil
+from pathlib import Path
+from typing import Callable
+
+from app.core.constants import ART_ALLOWED_EXT, ART_TYPES
+from app.services import art_service, drive_service, game_service, target_service, usbextreme_service
+
+StepCB = Callable[[str, str], None]
+
+
+def _emit(on_step: StepCB | None, status: str, message: str) -> None:
+    if on_step:
+        on_step(status, message)
+
+
+def _should_skip_scan_iso(file_path: Path) -> bool:
+    return file_path.name.startswith(".") or file_path.name.startswith("._")
+
+
+def scan_games(target_path: str, on_step: StepCB | None = None, expected_device_id: str | None = None) -> dict:
+    try:
+        drive_service.validate_external_storage(target_path, expected_device_id)
+        target = target_service.resolve_target(target_path)
+        ok, reason = target_service.validate_target_access(target)
+        if not ok:
+            return {"status": "error", "message": "target validation failed", "details": {"reason": reason}}
+
+        art_dir = target / "ART"
+        games: list[dict] = []
+        art_map: dict[str, list[str]] = {}
+        art_id_pattern = re.compile(r"^([A-Z]{4}_[0-9]{3}\.[0-9]{2})_")
+        if art_dir.exists():
+            for art_file in sorted(art_dir.iterdir()):
+                if not art_file.is_file() or art_file.suffix.lower() not in ART_ALLOWED_EXT:
+                    continue
+                match = art_id_pattern.match(art_file.stem.upper())
+                if match:
+                    art_map.setdefault(match.group(1), []).append(art_file.name)
+
+        for folder in ("DVD", "CD"):
+            folder_path = target / folder
+            if not folder_path.exists() or not folder_path.is_dir():
+                continue
+            for iso_file in sorted(folder_path.iterdir()):
+                if not iso_file.is_file() or iso_file.suffix.lower() != ".iso" or _should_skip_scan_iso(iso_file):
+                    continue
+                game_id = game_service.extract_game_id_from_filename(iso_file.name)
+                try:
+                    game_name = game_service.derive_game_name(None, iso_file.name)
+                except ValueError:
+                    game_name = iso_file.stem
+                art_files = sorted(art_map.get(game_id or "", []))
+                cover_file = next((name for name in art_files if "_COV." in name.upper()), None)
+                cover_path = art_dir / cover_file if cover_file else None
+                games.append(
+                    {
+                        "game_id": game_id,
+                        "game_name": game_name,
+                        "destination_filename": iso_file.name,
+                        "target_folder": folder,
+                        "path": str(iso_file),
+                        "size_bytes": iso_file.stat().st_size,
+                        "size_human": target_service.human_bytes(iso_file.stat().st_size),
+                        "art_count": len(art_files),
+                        "art_files": art_files,
+                        "cover_path": str(cover_path) if cover_path else None,
+                        "cover_preview_path": art_service.preview_thumbnail(cover_path, (128, 180)) if cover_path else None,
+                    }
+                )
+
+        for entry in usbextreme_service.read_entries(target):
+            part_files = usbextreme_service.entry_files(target, entry)
+            existing_parts = [part for part in part_files if part.is_file()]
+            if not existing_parts:
+                continue
+            art_files = sorted(art_map.get(entry.game_id, []))
+            cover_file = next((name for name in art_files if "_COV." in name.upper()), None)
+            size_bytes = sum(part.stat().st_size for part in existing_parts)
+            cover_path = art_dir / cover_file if cover_file else None
+            games.append(
+                {
+                    "game_id": entry.game_id,
+                    "game_name": entry.name,
+                    "destination_filename": existing_parts[0].name,
+                    "target_folder": "USBExtreme",
+                    "path": str(existing_parts[0]),
+                    "size_bytes": size_bytes,
+                    "size_human": target_service.human_bytes(size_bytes),
+                    "art_count": len(art_files),
+                    "art_files": art_files,
+                    "cover_path": str(cover_path) if cover_path else None,
+                    "cover_preview_path": art_service.preview_thumbnail(cover_path, (128, 180)) if cover_path else None,
+                }
+            )
+
+        total_games_bytes = sum(int(game.get("size_bytes", 0)) for game in games)
+        usage = shutil.disk_usage(target)
+        used_percent = round((usage.used / usage.total) * 100, 2) if usage.total > 0 else 0.0
+        storage = {
+            "games_bytes": total_games_bytes,
+            "games_human": target_service.human_bytes(total_games_bytes),
+            "total_bytes": usage.total,
+            "total_human": target_service.human_bytes(usage.total),
+            "used_bytes": usage.used,
+            "used_human": target_service.human_bytes(usage.used),
+            "free_bytes": usage.free,
+            "free_human": target_service.human_bytes(usage.free),
+            "used_percent": used_percent,
+        }
+        _emit(on_step, "success", f"scan completed ({len(games)} games)")
+        return {
+            "status": "success",
+            "message": "scan completed",
+            "details": {"games": games, "count": len(games), "storage": storage},
+        }
+    except Exception as exc:  # noqa: BLE001
+        _emit(on_step, "error", str(exc))
+        return {"status": "error", "message": "unexpected error during game scan", "details": {"error": str(exc)}}
+
+
+def delete_game(
+    target_path: str,
+    game_id: str,
+    destination_filename: str | None,
+    on_step: StepCB | None = None,
+    delete_artwork: bool = False,
+    delete_config: bool = False,
+    expected_device_id: str | None = None,
+) -> dict:
+    try:
+        drive_service.validate_external_storage(target_path, expected_device_id)
+        target = target_service.resolve_target(target_path)
+        normalized_game_id = game_service.normalize_game_id(game_id)
+        requested_filename = (destination_filename or "").strip()
+        ok, reason = target_service.validate_target_access(target)
+        if not ok:
+            return {"status": "error", "message": "target validation failed", "details": {"reason": reason}}
+
+        deleted_game_files: list[str] = []
+        candidates: list[Path] = []
+        for folder in ("DVD", "CD"):
+            folder_path = target / folder
+            if not folder_path.exists() or not folder_path.is_dir():
+                continue
+            if requested_filename:
+                candidate = folder_path / Path(requested_filename).name
+                candidate_id = game_service.extract_game_id_from_filename(candidate.name)
+                if candidate_id == normalized_game_id and candidate.exists() and candidate.is_file():
+                    candidates.append(candidate)
+            else:
+                candidates.extend(folder_path.glob(f"{normalized_game_id}*.iso"))
+
+        seen: set[str] = set()
+        unique_candidates: list[Path] = []
+        for candidate in candidates:
+            resolved = str(candidate.resolve())
+            if resolved not in seen:
+                seen.add(resolved)
+                unique_candidates.append(candidate)
+
+        for game_file in unique_candidates:
+            if game_file.exists() and game_file.is_file():
+                game_file.unlink()
+                deleted_game_files.append(str(game_file))
+
+        if requested_filename.lower().startswith("ul.") or not requested_filename:
+            deleted_game_files.extend(usbextreme_service.remove_entry(target, normalized_game_id))
+
+        if not deleted_game_files:
+            return {
+                "status": "error",
+                "message": "game file not found",
+                "details": {"game_id": normalized_game_id, "destination_filename": requested_filename},
+            }
+
+        art_dir = target / "ART"
+        deleted_art_files: list[str] = []
+        if delete_artwork and art_dir.exists() and art_dir.is_dir():
+            for art_type in ART_TYPES:
+                for ext in ART_ALLOWED_EXT:
+                    art_file = art_dir / f"{normalized_game_id}_{art_type}{ext}"
+                    if art_file.exists() and art_file.is_file():
+                        art_file.unlink()
+                        deleted_art_files.append(str(art_file))
+
+        deleted_config_files: list[str] = []
+        config_file = target / "CFG" / f"{normalized_game_id}.cfg"
+        if delete_config and config_file.is_file():
+            config_file.unlink()
+            deleted_config_files.append(str(config_file))
+
+        removed_manifest_entries = game_service.remove_manifest_entries(target, normalized_game_id, requested_filename or None)
+        _emit(on_step, "success", f"deleted game {normalized_game_id}")
+        return {
+            "status": "success",
+            "message": "game deleted",
+            "details": {
+                "game_id": normalized_game_id,
+                "deleted_game_files": deleted_game_files,
+                "deleted_art_files": deleted_art_files,
+                "deleted_config_files": deleted_config_files,
+                "removed_manifest_entries": removed_manifest_entries,
+            },
+        }
+    except ValueError as exc:
+        _emit(on_step, "error", str(exc))
+        return {"status": "error", "message": str(exc), "details": {}}
+    except Exception as exc:  # noqa: BLE001
+        _emit(on_step, "error", str(exc))
+        return {"status": "error", "message": "unexpected error during game deletion", "details": {"error": str(exc)}}

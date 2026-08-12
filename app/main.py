@@ -1,24 +1,23 @@
 from __future__ import annotations
 
-import os
+import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
+import flet as ft
 
-from app.api.routes import router
+if str(Path(__file__).resolve().parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-load_dotenv()
+from app.ui.app_layout import build_app
+from app.core.logging import configure_logging
 
-app = FastAPI(title="PS2 ISO Importer")
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
-app.include_router(router)
+
+def main() -> None:
+    load_dotenv()
+    configure_logging()
+    ft.app(target=build_app)
 
 
 if __name__ == "__main__":
-    import uvicorn
-
-    host = os.getenv("HOST", "127.0.0.1")
-    port = int(os.getenv("PORT", "8000"))
-    reload_enabled = os.getenv("RELOAD", "true").strip().lower() in {"1", "true", "yes", "on"}
-    uvicorn.run("app.main:app", host=host, port=port, reload=reload_enabled)
+    main()

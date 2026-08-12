@@ -9,6 +9,12 @@ from typing import Any, Optional
 
 import pycdlib
 
+from app.core.constants import CD_THRESHOLD_BYTES
+
+
+def classify_iso_media(size_bytes: int) -> str:
+    return "CD" if size_bytes < CD_THRESHOLD_BYTES else "DVD"
+
 
 def normalize_game_id(game_id: str) -> str:
     normalized = game_id.strip().upper()
