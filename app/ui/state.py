@@ -52,6 +52,7 @@ class AppStore:
         self.art_source_choices: list[dict] = []
         self.cancel_event = threading.Event()
         self.target_path = ""
+        self.selected_device_id = ""
 
     def set_state(self, new_state: AppState) -> None:
         allowed = TRANSITIONS.get(self.current_state, set())
@@ -67,6 +68,7 @@ class AppStore:
         self.art_candidates.clear()
         self.art_source_choices.clear()
         self.cancel_event.clear()
+        self.selected_device_id = ""
 
     def request_cancel(self) -> None:
         self.cancel_event.set()

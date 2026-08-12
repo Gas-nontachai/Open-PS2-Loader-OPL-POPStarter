@@ -5,174 +5,116 @@ from typing import Callable
 
 import flet as ft
 
-from app.core.constants import ART_TYPES
-from app.core.i18n import t
-
 
 class ArtTab(ft.Column):
     def __init__(self, on_pick_manual_art: Callable[[str], None]) -> None:
         self.on_pick_manual_art = on_pick_manual_art
+        self.on_game_selected: Callable[[dict], None] | None = None
+        self._games: dict[str, dict] = {}
+        self._new_art_path = ""
 
-        self.mode_dropdown = ft.Dropdown(
-            label=t("mode"),
-            value="auto",
-            options=[
-                ft.dropdown.Option("manual", t("mode_manual")),
-                ft.dropdown.Option("auto", t("mode_auto")),
-            ],
-        )
-
-        self.game_name = ft.TextField(label=t("game_name"))
-        self.game_dropdown = ft.Dropdown(label=t("source_game"), options=[])
-        self.iso_filename = ft.TextField(label=t("iso_filename"))
-        self.generated_game_id = ft.Text(f"{t('generated_game_id')}: -")
-
-        self.manual_files: dict[str, str] = {k: "" for k in ART_TYPES}
-        self.manual_filename_texts: dict[str, ft.Text] = {}
-        manual_rows: list[ft.Control] = []
-        for art_type in ART_TYPES:
-            name_text = ft.Text("-")
-            self.manual_filename_texts[art_type] = name_text
-            manual_rows.append(
-                ft.Row(
-                    [
-                        ft.Text(art_type, width=50),
-                        ft.ElevatedButton(t("pick_file"), on_click=lambda _, at=art_type: self.on_pick_manual_art(at)),
-                        name_text,
-                    ]
-                )
-            )
-        self.manual_upload_btn = ft.ElevatedButton(t("manual_upload"), bgcolor=ft.Colors.CYAN_700)
-        self.manual_block = ft.Column(controls=[*manual_rows, self.manual_upload_btn], visible=False)
-
-        self.search_btn = ft.ElevatedButton(t("search_art"), bgcolor=ft.Colors.INDIGO_700)
-        self.save_auto_btn = ft.ElevatedButton(t("save_selected_art"), bgcolor=ft.Colors.GREEN_700)
-        self.candidate_grid = ft.GridView(
-            expand=True,
-            max_extent=280,
-            spacing=10,
-            run_spacing=10,
-            child_aspect_ratio=0.78,
-        )
-        self.candidate_cards: list[dict] = []
-        self.auto_block = ft.Column(
-            expand=True,
-            controls=[ft.Row([self.search_btn, self.save_auto_btn], wrap=True), self.candidate_grid],
-            visible=True,
-        )
-
-        self.mode_dropdown.on_change = self._on_mode_change
+        self.game_dropdown = ft.Dropdown(label="Game", options=[], expand=True)
         self.game_dropdown.on_change = self._on_game_change
+        self.empty_text = ft.Text("Scan your game library, then choose a game.", color=ft.Colors.GREY_400)
+        self.current_preview = ft.Image(width=260, height=360, fit=ft.ImageFit.CONTAIN, visible=False)
+        self.new_preview = ft.Image(width=260, height=360, fit=ft.ImageFit.CONTAIN, visible=False)
+        self.current_placeholder = ft.Container(
+            content=ft.Text("No current artwork", text_align=ft.TextAlign.CENTER),
+            width=260,
+            height=360,
+            alignment=ft.alignment.center,
+            bgcolor=ft.Colors.GREY_900,
+            border_radius=12,
+        )
+        self.new_placeholder = ft.Container(
+            content=ft.Text("Choose a PNG, JPG, JPEG, or WEBP image", text_align=ft.TextAlign.CENTER),
+            width=260,
+            height=360,
+            alignment=ft.alignment.center,
+            bgcolor=ft.Colors.GREY_900,
+            border_radius=12,
+        )
+        self.choose_btn = ft.ElevatedButton("Choose Image", icon=ft.Icons.UPLOAD_FILE)
+        self.choose_btn.on_click = lambda _: self.on_pick_manual_art("COV")
+        self.save_btn = ft.FilledButton("Save Artwork", icon=ft.Icons.SAVE, disabled=True)
+        self.remove_btn = ft.OutlinedButton("Remove Artwork", icon=ft.Icons.DELETE_OUTLINE, disabled=True)
+        self.status_text = ft.Text("Select a game to manage its cover.")
 
         super().__init__(
-            expand=True,
-            spacing=10,
+            expand=False,
+            spacing=18,
             controls=[
-                self.mode_dropdown,
-                self.game_name,
+                ft.Text("Artwork", size=28, weight=ft.FontWeight.BOLD),
+                ft.Text("Choose a game and upload its cover image manually."),
                 self.game_dropdown,
-                self.iso_filename,
-                self.generated_game_id,
-                self.manual_block,
-                self.auto_block,
+                self.empty_text,
+                ft.ResponsiveRow(
+                    [
+                        ft.Column([ft.Text("Current artwork", weight=ft.FontWeight.BOLD), ft.Stack([self.current_placeholder, self.current_preview])], col={"sm": 12, "md": 6}),
+                        ft.Column([ft.Text("New artwork preview", weight=ft.FontWeight.BOLD), ft.Stack([self.new_placeholder, self.new_preview])], col={"sm": 12, "md": 6}),
+                    ]
+                ),
+                ft.Row([self.choose_btn, self.save_btn, self.remove_btn], wrap=True),
+                self.status_text,
             ],
         )
 
-    def _on_mode_change(self, _: ft.ControlEvent) -> None:
-        is_manual = self.mode_dropdown.value == "manual"
-        self.manual_block.visible = is_manual
-        self.auto_block.visible = not is_manual
+    def _on_game_change(self, _: ft.ControlEvent) -> None:
+        self._refresh_game()
+
+    def _refresh_game(self) -> None:
+        game = self.selected_game()
+        self._new_art_path = ""
+        self.new_preview.visible = False
+        self.new_placeholder.visible = True
+        self.save_btn.disabled = True
+        cover = str(game.get("cover_path") or "") if game else ""
+        self.current_preview.src = cover
+        self.current_preview.visible = bool(cover)
+        self.current_placeholder.visible = not bool(cover)
+        self.remove_btn.disabled = not bool(cover)
+        self.status_text.value = "Choose an image to replace this cover." if game else "Select a game first."
+        if self.on_game_selected and game:
+            self.on_game_selected(game)
         self.update()
 
-    def _on_game_change(self, _: ft.ControlEvent) -> None:
-        value = self.game_dropdown.value or ""
-        if not value:
-            return
-        try:
-            game_id, game_name, dest_name = value.split("|", 2)
-        except ValueError:
-            return
-        self.generated_game_id.value = f"{t('generated_game_id')}: {game_id or '-'}"
-        self.game_name.value = game_name
-        self.iso_filename.value = dest_name
-        self.update()
+    def selected_game(self) -> dict:
+        return self._games.get(str(self.game_dropdown.value or ""), {})
 
     def update_source_choices(self, games_list: list[dict]) -> None:
+        self._games = {str(index): game for index, game in enumerate(games_list)}
         self.game_dropdown.options = [
-            ft.dropdown.Option(
-                key=f"{g.get('game_id','')}|{g.get('game_name','')}|{g.get('destination_filename','')}",
-                text=f"{g.get('game_name', '-') } ({g.get('game_id', '-')})",
-            )
-            for g in games_list
+            ft.dropdown.Option(key=key, text=f"{game.get('game_name', '-')} ({game.get('game_id', '-')})")
+            for key, game in self._games.items()
         ]
+        self.empty_text.visible = not bool(games_list)
+        if games_list:
+            self.game_dropdown.value = "0"
+            self._refresh_game()
 
     def set_manual_file(self, art_type: str, path: str) -> None:
-        self.manual_files[art_type] = path
-        self.manual_filename_texts[art_type].value = Path(path).name if path else "-"
-
-    def render_candidates(self, candidates_list: list[dict]) -> None:
-        self.candidate_grid.controls.clear()
-        self.candidate_cards = []
-        if not candidates_list:
-            self.candidate_grid.controls.append(ft.Text(t("candidate_empty")))
-            self.update()
+        if art_type != "COV":
             return
-
-        for cand in candidates_list:
-            checkbox = ft.Checkbox(value=True)
-            type_dropdown = ft.Dropdown(
-                value="COV",
-                options=[ft.dropdown.Option(x) for x in ART_TYPES],
-                width=120,
-            )
-            self.candidate_cards.append({"candidate": cand, "check": checkbox, "type": type_dropdown})
-            self.candidate_grid.controls.append(
-                ft.Card(
-                    content=ft.Container(
-                        padding=8,
-                        content=ft.Column(
-                            [
-                                ft.Image(
-                                    src=cand.get("thumbnail_url") or cand.get("image_url"),
-                                    height=140,
-                                    fit=ft.ImageFit.COVER,
-                                    border_radius=8,
-                                ),
-                                ft.Text(cand.get("title", "-"), max_lines=2),
-                                checkbox,
-                                type_dropdown,
-                            ]
-                        ),
-                    )
-                )
-            )
-        self.update()
-
-    def collect_auto_selections(self) -> list[dict]:
-        selections: list[dict] = []
-        for card in self.candidate_cards:
-            if card["check"].value:
-                selections.append(
-                    {
-                        "art_type": card["type"].value,
-                        "image_url": card["candidate"].get("image_url"),
-                    }
-                )
-        return selections
+        self._new_art_path = path
+        self.new_preview.src = path
+        self.new_preview.visible = bool(path)
+        self.new_placeholder.visible = not bool(path)
+        self.save_btn.disabled = not bool(path) or not bool(self.selected_game())
+        self.status_text.value = f"Ready to save {Path(path).name}." if path else "Choose an image."
 
     def collect_manual_files(self) -> dict[str, str]:
-        return {k: v for k, v in self.manual_files.items() if v}
+        return {"COV": self._new_art_path} if self._new_art_path else {}
+
+    def refresh_selected_artwork(self, cover_path: str | None) -> None:
+        self.current_preview.src = cover_path or ""
+        self.current_preview.visible = bool(cover_path)
+        self.current_placeholder.visible = not bool(cover_path)
+        self.remove_btn.disabled = not bool(cover_path)
+        self._new_art_path = ""
+        self.new_preview.visible = False
+        self.new_placeholder.visible = True
+        self.save_btn.disabled = True
 
     def translate(self) -> None:
-        self.mode_dropdown.label = t("mode")
-        self.mode_dropdown.options = [
-            ft.dropdown.Option("manual", t("mode_manual")),
-            ft.dropdown.Option("auto", t("mode_auto")),
-        ]
-        self.game_name.label = t("game_name")
-        self.game_dropdown.label = t("source_game")
-        self.iso_filename.label = t("iso_filename")
-        self.manual_upload_btn.text = t("manual_upload")
-        self.search_btn.text = t("search_art")
-        self.save_auto_btn.text = t("save_selected_art")
-        self.generated_game_id.value = f"{t('generated_game_id')}: -"
+        # The simplified artwork workflow intentionally uses plain, beginner-friendly English.
+        pass

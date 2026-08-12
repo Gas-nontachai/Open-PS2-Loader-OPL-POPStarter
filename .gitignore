@@ -15,6 +15,7 @@ env/
 build/
 dist/
 *.spec
+*.part
 
 # Logs and test/cache artifacts
 *.log

@@ -1,193 +1,121 @@
 # PS2 TOOLKIT 2000X
 
-Desktop app สำหรับจัดการเกม PS2 บน USB เพื่อใช้งานกับ Open PS2 Loader (OPL)
-สร้างด้วย **Flet + Python** และรองรับการทำงานแบบข้ามแพลตฟอร์ม
+PS2 TOOLKIT 2000X is a Windows desktop utility for importing and managing PS2 games on external USB storage used with Open PS2 Loader (OPL). It is built with Python and Flet and is distributed as a self-contained Windows installer.
 
-- จัดการโฟลเดอร์ OPL อัตโนมัติ (`CD`, `DVD`, `ART`, `CFG`, ...)
-- นำเข้า ISO และตั้งชื่อไฟล์ตามรูปแบบ OPL
-- สแกน/ลบเกม พร้อมสรุปพื้นที่ใช้งาน
-- จัดการ ART แบบ Manual และ Auto (RAWG)
-- แสดงสถานะ + progress + event log ระหว่างทำงาน
+## External-storage-only safety
 
----
+The application only accepts a destination when Windows can map its logical volume to a physical disk whose bus type is explicitly `USB`. This supports:
 
-## 1) Requirements
+- USB flash drives
+- External USB HDDs
+- External USB SSDs
 
-- macOS / Windows / Linux
-- Python 3.9+
-- สิทธิ์อ่าน/เขียน USB drive
-- อินเทอร์เน็ต (เฉพาะโหมดค้นหา ART อัตโนมัติ)
+Internal SATA/NVMe disks, the Windows/application drive, boot/system/pagefile disks, recovery/hidden volumes, network drives, disconnected devices, and devices with unknown classification are rejected. Safety validation runs again before every storage operation; UI filtering is not treated as authorization.
 
-> แนะนำให้ใช้ virtual environment แยกสำหรับโปรเจกต์
+Formatting remains destructive. Always verify the model, drive letter, capacity and filesystem shown in the confirmation dialog.
 
----
+## Features
 
-## 2) Setup
+- Beginner-friendly Home, Import Games, combined Games & Artwork, USB/Storage and Settings pages.
+- Guided multi-ISO import with destination and space review.
+- Automatic OPL-compatible splitting for ISO files that exceed the FAT32 single-file limit.
+- Clear import errors and suggested fixes directly on the Import page; no log reading is required.
+- PS2 game ID extraction and OPL-compatible CD/DVD filenames.
+- Background copying with byte progress, cancellation and atomic `.part` files.
+- Game scanning, artwork thumbnails, storage summary and confirmed deletion.
+- Revalidates the physical USB device whenever a page opens and clears stale game/artwork data after disconnect, device replacement or formatting.
+- Manual PNG, JPG, JPEG and WEBP cover upload with preview, conversion, replacement and removal.
+- Idempotent creation/repair of OPL folders.
+- English/Thai UI switch: the toggle displays the language it will switch to.
+- Settings and rotating logs under `%LOCALAPPDATA%\PS2 Toolkit 2000X`.
+- Fully offline operation.
+- Requests Windows Administrator permission when launched so storage operations use one consistent permission context.
 
-### 2.1 Clone และเข้าโฟลเดอร์
+## Development requirements
 
-```bash
-git clone <your-repo-url>
-cd PS2_FD
+- Windows 10 or Windows 11 x64
+- Python 3.11 recommended; Python 3.9+ supported by the source
+- Inno Setup 6 for installer builds
+
+## Development setup and run
+
+```powershell
+git clone <repository-url>
+cd Open-PS2-Loader-OPL-POPStarter
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements-dev.txt
+.\scripts\dev.ps1
 ```
 
-### 2.2 สร้าง virtual environment และติดตั้ง dependencies
+Manual equivalent:
 
-```bash
-python3 -m venv .venv_flet
-source .venv_flet/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
+```powershell
+.\.venv\Scripts\python.exe -m app.main
 ```
 
-### 2.3 ตั้งค่า `.env`
+## Testing
 
-ตัวอย่างไฟล์อยู่ที่ `.env.example`
-
-ค่าที่สำคัญ:
-
-- `RAWG_API_KEY`
-- `ART_SEARCH_CACHE_TTL_SEC`
-- `ART_SEARCH_CACHE_MAX_SIZE`
-- `ART_SEARCH_RATE_LIMIT_PER_MIN`
-- `ART_SEARCH_MIN_INTERVAL_SEC`
-
----
-
-## 3) Run (Development)
-
-```bash
-source .venv_flet/bin/activate
-flet run app/main.py
+```powershell
+.\.venv\Scripts\python.exe -m pytest
 ```
 
-หากเจอปัญหา `flet: command not found` ให้รันใน venv เดิมตามคำสั่งด้านบน (อย่าเรียกจาก global python)
+Tests use mocked device data and temporary folders. Automated tests never format a physical disk.
 
----
+## Build and release
 
-## 4) การใช้งานหลักในแอป
-
-1. เลือกโฟลเดอร์ปลายทาง (USB)
-2. กดตรวจสอบปลายทาง
-3. เลือกไฟล์ ISO แล้วนำเข้า
-4. กดสแกนเกมเพื่อตรวจรายการ
-5. ไปแท็บ ART เพื่อค้นหา/อัปโหลดภาพ
-6. บันทึก ART ลงโฟลเดอร์ `ART`
-
----
-
-## 5) Build สำหรับแจกจ่าย
-
-### 5.1 Build macOS `.app`
-
-```bash
-source .venv_flet/bin/activate
-pip install pyinstaller
-flet pack app/main.py --name "PS2 Toolkit" -y
+```powershell
+.\scripts\build.ps1
+.\scripts\package.ps1
 ```
 
-ผลลัพธ์อยู่ใน `dist/PS2 Toolkit.app`
+Or run the complete pipeline:
 
-### 5.2 สร้าง `.dmg` แบบลากลง Applications
-
-```bash
-# ติดตั้งเครื่องมือครั้งเดียว
-brew install create-dmg
-
-# สร้าง dmg พร้อม layout
-create-dmg \
-  --volname "PS2 Toolkit" \
-  --window-pos 200 120 \
-  --window-size 760 460 \
-  --icon-size 120 \
-  --background "packaging/dmg/background.png" \
-  --icon "PS2 Toolkit.app" 180 260 \
-  --hide-extension "PS2 Toolkit.app" \
-  --app-drop-link 580 260 \
-  "dist/PS2-Toolkit-Installer.dmg" \
-  "dist/PS2 Toolkit.app"
+```powershell
+.\scripts\release.ps1
 ```
 
-### 5.3 ฝั่ง Windows (`.exe`)
+If local PowerShell policy blocks scripts:
 
-ให้ build บนเครื่อง Windows โดยตรง:
-
-```bash
-flet pack app/main.py --name "PS2 Toolkit" -y
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\release.ps1
 ```
 
----
-
-## 6) Project Structure
+Outputs:
 
 ```text
-app/
-  __init__.py
-  main.py
-  core/
-    constants.py
-    i18n.py
-    schemas.py
-  services/
-    target_service.py
-    format_service.py
-    game_service.py
-    art_service.py
-  controllers/
-    import_controller.py
-    game_controller.py
-    art_controller.py
-  ui/
-    app_layout.py
-    import_tab.py
-    art_tab.py
-    console_panel.py
-    dialogs.py
-    state.py
-packaging/
-  dmg/
-    background.png
-requirements.txt
+build\windows\PS2 Toolkit 2000X\PS2 Toolkit 2000X.exe
+dist\PS2-Toolkit-2000X-Setup-1.0.0.exe
 ```
 
----
+The release version has one source of truth: `APP_VERSION` in `app/core/constants.py`.
 
-## 7) Troubleshooting
+## Project structure
 
-### แอปเปิดแล้วปิดทันที
-
-- อัปเดตล่าสุดแก้แล้วด้วยการเพิ่ม `app/__init__.py`
-- ให้ build ใหม่เสมอหลังดึงโค้ดล่าสุด
-
-### `Please install PyInstaller module`
-
-```bash
-pip install pyinstaller
+```text
+app/core/          configuration, version, paths, logging and errors
+app/models/        normalized game, drive and import models
+app/services/      drive classification, ISO/OPL, artwork and formatting logic
+app/controllers/   UI-independent workflows and safety gates
+app/ui/            responsive Flet pages and dialogs
+docs/              end-user and Windows release guides
+installer/         Inno Setup source
+scripts/           development, test/build and release scripts
+tests/             storage safety and business-logic tests
 ```
 
-### macOS เปิดแอปครั้งแรกแล้วโดนบล็อก
+This is a native packaged Flet desktop application. It does not run an API or web server.
 
-- คลิกขวาแอป > `Open`
-- หรือไป `System Settings > Privacy & Security` แล้วกด `Open Anyway`
+## Troubleshooting
 
-### เปิดจาก DMG แล้วพอปิดหน้าต่างแอปหาย
+- **No external storage detected:** reconnect the USB device, wait for Windows to mount it, then click Refresh Devices. Unknown or non-USB devices are intentionally hidden.
+- **Device changed/disconnected:** refresh and select the device again. The app will not reuse an old drive-letter identity.
+- **Game ID cannot be read:** use a valid PS2 ISO or a filename beginning with an ID such as `SLUS_209.46`.
+- **Not enough free space:** remove files or choose a larger external USB device.
+- **Build tools missing:** activate `.venv` and reinstall `requirements-dev.txt`.
+- **Installer compiler missing:** install Inno Setup 6.
+- **PowerShell scripts blocked:** use the `-ExecutionPolicy Bypass` command shown above.
+- **Administrator prompt at startup:** expected behavior. Click **Yes** to allow storage management; choosing **No** cancels application startup.
 
-- ต้องลาก `PS2 Toolkit.app` ไป `Applications` ก่อน
-- ถ้าเปิดตรงจาก DMG แอปจะหายเมื่อ unmount
-
----
-
-## 8) Development Notes
-
-- โค้ดเดิมแบบ FastAPI/Web ถูก migrate มา Flet Desktop แล้ว
-- การ format USB ใช้คำสั่งตาม OS:
-  - macOS: `diskutil`
-  - Windows: `diskpart`
-  - Linux: `mkfs.vfat`
-- ฟีเจอร์ Auto ART ต้องมี `RAWG_API_KEY` ใน `.env`
-
----
-
-## 9) License
-
-ระบุ license ตามที่ใช้งานใน repo นี้ (ถ้ามี)
+See [docs/HOW_TO_USE.md](docs/HOW_TO_USE.md) and [docs/windows-release.md](docs/windows-release.md).

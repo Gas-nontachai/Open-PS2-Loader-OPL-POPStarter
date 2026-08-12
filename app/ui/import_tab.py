@@ -1,158 +1,153 @@
 from __future__ import annotations
 
-from typing import Callable
+from pathlib import Path
 
 import flet as ft
 
-from app.core.i18n import t
+from app.services.target_service import human_bytes
 
 
 class ImportTab(ft.Column):
-    def __init__(self, page: ft.Page, on_pick_folder: Callable[[], None], on_pick_isos: Callable[[], None]) -> None:
+    def __init__(self, page: ft.Page, on_pick_isos) -> None:
         self.page = page
-        self.on_pick_folder = on_pick_folder
         self.on_pick_isos = on_pick_isos
+        self.target_path = ft.TextField(visible=False)
+        self.selected_isos: list[str] = []
+        self.available_bytes = 0
 
-        self.target_path = ft.TextField(label=t("target_path"), hint_text=t("target_hint"), expand=True)
-        self.pick_folder_btn = ft.ElevatedButton(t("pick_folder"), on_click=lambda _: self.on_pick_folder())
-
-        self.validate_btn = ft.ElevatedButton(t("validate_target"), bgcolor=ft.Colors.CYAN_700)
-        self.format_btn = ft.ElevatedButton(t("format_usb"), bgcolor=ft.Colors.AMBER_700)
-        self.cancel_btn = ft.ElevatedButton(t("cancel"), bgcolor=ft.Colors.RED_700, disabled=True)
-
-        self.pick_iso_btn = ft.ElevatedButton(t("pick_iso"), on_click=lambda _: self.on_pick_isos())
-        self.selected_iso_text = ft.Text(t("no_selection"))
-        self.overwrite_checkbox = ft.Checkbox(label=t("overwrite"), value=True)
-        self.import_btn = ft.ElevatedButton(t("import_prepare"), bgcolor=ft.Colors.GREEN_700)
-
-        self.scan_btn = ft.ElevatedButton(t("scan_games"), bgcolor=ft.Colors.INDIGO_700)
-        self.games_table = ft.DataTable(
-            columns=[
-                ft.DataColumn(ft.Text(t("col_game_id"))),
-                ft.DataColumn(ft.Text(t("col_game_name"))),
-                ft.DataColumn(ft.Text(t("col_file"))),
-                ft.DataColumn(ft.Text(t("col_folder"))),
-                ft.DataColumn(ft.Text(t("col_size"))),
-                ft.DataColumn(ft.Text(t("col_art"))),
-                ft.DataColumn(ft.Text(t("col_actions"))),
-            ],
-            rows=[],
-            expand=True,
-            column_spacing=14,
+        self.drive_dropdown = ft.Dropdown(label="Destination Device", expand=True, options=[])
+        self.refresh_drives_btn = ft.OutlinedButton("Refresh Devices", icon=ft.Icons.REFRESH)
+        self.drive_details = ft.Text("No external storage detected", color=ft.Colors.AMBER_300)
+        self.device_empty = ft.Text(
+            "Connect a USB flash drive or external HDD/SSD and click Refresh.",
+            color=ft.Colors.GREY_400,
         )
-
-        self.stat_games = ft.Text("0")
-        self.stat_games_size = ft.Text("0 B")
-        self.stat_used = ft.Text("0 B")
-        self.stat_free = ft.Text("0 B")
-        self.storage_meter = ft.ProgressBar(value=0, color=ft.Colors.CYAN)
-        self.storage_text = ft.Text("0%")
-
-        self.iso_section = ft.Column(
+        self.pick_iso_btn = ft.ElevatedButton("Select PS2 ISO Files", icon=ft.Icons.FOLDER_OPEN, on_click=lambda _: self.on_pick_isos())
+        self.selected_iso_text = ft.Text("No games selected")
+        self.file_list = ft.Column(spacing=4)
+        self.overwrite_checkbox = ft.Checkbox(label="Replace games that already exist", value=False)
+        self.import_btn = ft.FilledButton("Import Games", icon=ft.Icons.DOWNLOAD, disabled=True)
+        self.cancel_btn = ft.OutlinedButton("Cancel Import", icon=ft.Icons.CANCEL, disabled=True)
+        self.result_title = ft.Text("", size=17, weight=ft.FontWeight.BOLD)
+        self.result_message = ft.Text("", selectable=True)
+        self.result_panel = ft.Container(
             visible=False,
-            controls=[
-                ft.Row([self.pick_iso_btn, self.import_btn]),
-                self.overwrite_checkbox,
-                self.selected_iso_text,
-            ],
+            padding=14,
+            border_radius=10,
+            content=ft.Column([self.result_title, self.result_message], spacing=6),
         )
-
-        self.games_section = ft.Column(
-            visible=False,
-            controls=[
-                self.scan_btn,
-                ft.Container(self.games_table, expand=True),
-                ft.Row(
-                    [
-                        ft.Column([ft.Text(t("games")), self.stat_games]),
-                        ft.Column([ft.Text(t("games_size")), self.stat_games_size]),
-                        ft.Column([ft.Text(t("used_space")), self.stat_used]),
-                        ft.Column([ft.Text(t("free_space")), self.stat_free]),
-                    ],
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                ),
-                self.storage_meter,
-                self.storage_text,
-            ],
-        )
+        self.summary_destination = ft.Text("—")
+        self.summary_games = ft.Text("0")
+        self.summary_required = ft.Text("0 B")
+        self.summary_available = ft.Text("—")
 
         super().__init__(
             expand=True,
-            spacing=12,
+            scroll=ft.ScrollMode.AUTO,
+            spacing=18,
             controls=[
-                ft.Row([self.target_path, self.pick_folder_btn]),
-                ft.Row([self.validate_btn, self.format_btn, self.cancel_btn]),
-                self.iso_section,
-                self.games_section,
+                ft.Text("Import Games", size=28, weight=ft.FontWeight.BOLD),
+                ft.Text("Copy PS2 ISO files to verified external USB storage for Open PS2 Loader."),
+                self._step("1", "Select Storage", ft.Column([ft.Row([self.drive_dropdown, self.refresh_drives_btn]), self.drive_details, self.device_empty])),
+                self._step("2", "Select Games", ft.Column([self.pick_iso_btn, self.selected_iso_text, self.file_list])),
+                self._step(
+                    "3",
+                    "Review",
+                    ft.Column(
+                        [
+                            self._summary_row("Destination", self.summary_destination),
+                            self._summary_row("Games", self.summary_games),
+                            self._summary_row("Required Space", self.summary_required),
+                            self._summary_row("Available Space", self.summary_available),
+                            self.overwrite_checkbox,
+                        ]
+                    ),
+                ),
+                self._step("4", "Import", ft.Column([ft.Row([self.import_btn, self.cancel_btn], wrap=True), self.result_panel])),
+                self.target_path,
             ],
         )
+        self._interactive_controls = [self.drive_dropdown, self.refresh_drives_btn, self.pick_iso_btn, self.overwrite_checkbox, self.import_btn]
 
-        self.selected_isos: list[str] = []
-        self._interactive_controls: list[ft.Control] = [
-            self.target_path,
-            self.pick_folder_btn,
-            self.validate_btn,
-            self.format_btn,
-            self.pick_iso_btn,
-            self.overwrite_checkbox,
-            self.import_btn,
-            self.scan_btn,
+    @staticmethod
+    def _step(number: str, title: str, content: ft.Control) -> ft.Control:
+        return ft.Container(
+            padding=16,
+            border=ft.border.all(1, ft.Colors.GREY_800),
+            border_radius=12,
+            content=ft.Column([ft.Text(f"Step {number} — {title}", size=18, weight=ft.FontWeight.BOLD), content]),
+        )
+
+    @staticmethod
+    def _summary_row(label: str, value: ft.Text) -> ft.Control:
+        return ft.Row([ft.Text(label, width=150, color=ft.Colors.GREY_400), value])
+
+    def set_drives(self, drives: list[dict]) -> None:
+        self.drive_dropdown.options = [
+            ft.dropdown.Option(key=str(item["path"]), text=f"{item['letter']} • {item['model']} • {item['total_human']} • {item['filesystem']}")
+            for item in drives
         ]
+        self.device_empty.visible = not bool(drives)
+        if not drives:
+            self.drive_dropdown.value = None
+            self.target_path.value = ""
+            self.drive_details.value = "No external storage detected"
+            self.available_bytes = 0
+        self._update_ready()
+
+    def show_drive(self, drive: dict) -> None:
+        self.target_path.value = str(drive["path"])
+        self.available_bytes = int(drive["free_bytes"])
+        self.drive_details.value = (
+            f"{drive['model']} • {drive['storage_type']} • {drive['free_human']} Free / "
+            f"{drive['total_human']} • {drive['filesystem']} • {drive['connection_type']}"
+        )
+        self.device_empty.visible = False
+        self.summary_destination.value = f"{drive['model']} ({drive['letter']})"
+        self.summary_available.value = drive["free_human"]
+        self._update_ready()
 
     def set_selected_isos(self, paths: list[str]) -> None:
         self.selected_isos = paths
-        if not paths:
-            self.selected_iso_text.value = t("no_selection")
-            return
-        names = ", ".join([p.split("/")[-1] for p in paths[:3]])
-        if len(paths) > 3:
-            names = f"{names} ..."
-        self.selected_iso_text.value = f"{t('selected_files')}: {len(paths)} ({names})"
+        self.file_list.controls.clear()
+        total = 0
+        for path in paths:
+            source = Path(path)
+            try:
+                size = source.stat().st_size
+            except OSError:
+                size = 0
+            total += size
+            large_note = "  • Large ISO: FAT32 will be handled automatically" if size > 4 * 1024**3 - 1 else ""
+            self.file_list.controls.append(ft.Text(f"• {source.name}  ({human_bytes(size)}){large_note}"))
+        self.selected_iso_text.value = f"{len(paths)} game(s) selected" if paths else "No games selected"
+        self.summary_games.value = str(len(paths))
+        self.summary_required.value = human_bytes(total)
+        self._update_ready()
 
-    def set_games(self, games: list[dict], on_delete: Callable[[dict], None]) -> None:
-        rows: list[ft.DataRow] = []
-        for game in games:
-            rows.append(
-                ft.DataRow(
-                    cells=[
-                        ft.DataCell(ft.Text(str(game.get("game_id") or "-"))),
-                        ft.DataCell(ft.Text(str(game.get("game_name") or "-"))),
-                        ft.DataCell(ft.Text(str(game.get("destination_filename") or "-"))),
-                        ft.DataCell(ft.Text(str(game.get("target_folder") or "-"))),
-                        ft.DataCell(ft.Text(str(game.get("size_human") or "-"))),
-                        ft.DataCell(ft.Text(str(game.get("art_count") or 0))),
-                        ft.DataCell(ft.IconButton(icon=ft.Icons.DELETE_OUTLINE, icon_color=ft.Colors.RED_300, on_click=lambda _, g=game: on_delete(g))),
-                    ]
-                )
-            )
-        self.games_table.rows = rows
-
-    def update_storage(self, summary_dict: dict) -> None:
-        self.stat_games.value = str(summary_dict.get("count", 0))
-        self.stat_games_size.value = str(summary_dict.get("games_human", "0 B"))
-        self.stat_used.value = str(summary_dict.get("used_human", "0 B"))
-        self.stat_free.value = str(summary_dict.get("free_human", "0 B"))
-        percent = float(summary_dict.get("used_percent", 0.0))
-        self.storage_meter.value = max(0.0, min(1.0, percent / 100.0))
-        self.storage_text.value = f"{t('storage_usage')}: {percent:.2f}%"
+    def _update_ready(self) -> None:
+        self.import_btn.disabled = not bool(self.target_path.value and self.selected_isos)
 
     def set_controls_enabled(self, enabled: bool) -> None:
         for control in self._interactive_controls:
             control.disabled = not enabled
         self.cancel_btn.disabled = enabled
+        if enabled:
+            self._update_ready()
 
-    def reveal_post_validation(self) -> None:
-        self.iso_section.visible = True
-        self.games_section.visible = True
+    def show_result(self, success: bool, title: str, message: str) -> None:
+        self.result_panel.visible = True
+        self.result_panel.bgcolor = ft.Colors.GREEN_900 if success else ft.Colors.RED_900
+        self.result_panel.border = ft.border.all(1, ft.Colors.GREEN_500 if success else ft.Colors.RED_400)
+        self.result_title.value = title
+        self.result_message.value = message
 
-    def translate(self) -> None:
-        self.target_path.label = t("target_path")
-        self.target_path.hint_text = t("target_hint")
-        self.pick_folder_btn.text = t("pick_folder")
-        self.validate_btn.text = t("validate_target")
-        self.format_btn.text = t("format_usb")
-        self.cancel_btn.text = t("cancel")
-        self.pick_iso_btn.text = t("pick_iso")
-        self.overwrite_checkbox.label = t("overwrite")
-        self.import_btn.text = t("import_prepare")
-        self.scan_btn.text = t("scan_games")
+    def clear_result(self) -> None:
+        self.result_panel.visible = False
+
+    def translate(self, language: str = "en") -> None:
+        # Page-level translation is applied by the shell; controls retain recognizable action labels.
+        self.refresh_drives_btn.text = "Refresh Devices" if language == "en" else "รีเฟรชอุปกรณ์"
+        self.pick_iso_btn.text = "Select PS2 ISO Files" if language == "en" else "เลือกไฟล์ PS2 ISO"
+        self.import_btn.text = "Import Games" if language == "en" else "นำเข้าเกม"
+        self.cancel_btn.text = "Cancel Import" if language == "en" else "ยกเลิกการนำเข้า"

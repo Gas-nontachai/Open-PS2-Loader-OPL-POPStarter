@@ -6,8 +6,13 @@ import re
 import subprocess
 import tempfile
 import time
+import logging
 from pathlib import Path
 from typing import Any, Callable, Optional
+
+from app.services import drive_service
+
+logger = logging.getLogger("ps2_toolkit.format")
 
 
 def sanitize_volume_label(label: str) -> str:
@@ -55,40 +60,11 @@ def validate_format_target_macos(path: Path) -> tuple[str, dict[str, Any], dict[
     return whole_disk, info, whole_info
 
 
-def _resolve_windows_disk_number(path: Path) -> int:
-    drive = path.drive.rstrip("\\/")
-    if not drive:
-        raise RuntimeError("invalid windows target path")
-    ps = (
-        "$letter='" + drive[0].upper() + "';"
-        "$p=Get-Partition -DriveLetter $letter -ErrorAction Stop;"
-        "Write-Output $p.DiskNumber"
-    )
-    result = run_cmd(["powershell", "-NoProfile", "-Command", ps])
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "unable to resolve disk number")
-    try:
-        return int(result.stdout.strip().splitlines()[-1])
-    except Exception as exc:
-        raise RuntimeError("invalid disk number output") from exc
-
-
-def _is_windows_disk_removable(disk_number: int) -> bool:
-    ps = (
-        f"$d=Get-Disk -Number {disk_number} -ErrorAction Stop;"
-        "if ($d.IsBoot -or $d.IsSystem) { Write-Output 'NO'; exit 0 };"
-        "if ($d.BusType -in @('USB','SD','MMC','File Backed Virtual')) { Write-Output 'YES' } else { Write-Output 'NO' }"
-    )
-    result = run_cmd(["powershell", "-NoProfile", "-Command", ps])
-    if result.returncode != 0:
-        return False
-    return result.stdout.strip().endswith("YES")
-
-
 def validate_format_target_windows(path: Path) -> dict[str, Any]:
-    disk_number = _resolve_windows_disk_number(path)
-    if not _is_windows_disk_removable(disk_number):
-        raise RuntimeError("refusing to format non-removable/system disk")
+    device = drive_service.validate_external_storage(path)
+    if device.disk_number is None:
+        raise RuntimeError("unable to identify the external physical disk")
+    disk_number = device.disk_number
     return {"disk_number": disk_number}
 
 
@@ -163,6 +139,22 @@ def wait_mount_point(device: str, expected_label: Optional[str] = None, retries:
     raise RuntimeError("formatted volume did not mount in time")
 
 
+def _powershell_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _windows_format_helper(disk_number: int, script_path: str) -> str:
+    return "\n".join(
+        [
+            "$ErrorActionPreference = 'Stop'",
+            f"$disk = Get-Disk -Number {disk_number} -ErrorAction Stop",
+            "if ($disk.BusType -ne 'USB' -or $disk.IsBoot -or $disk.IsSystem) { throw 'Safety check rejected this disk.' }",
+            f"$process = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\\diskpart.exe') -ArgumentList @('/s', {_powershell_literal(script_path)}) -Wait -PassThru -WindowStyle Hidden",
+            "exit $process.ExitCode",
+        ]
+    )
+
+
 def format_windows(disk_number: int, label: str) -> str:
     script = "\n".join(
         [
@@ -175,14 +167,46 @@ def format_windows(disk_number: int, label: str) -> str:
             "exit",
         ]
     )
-    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as tmp:
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="ascii") as tmp:
         tmp.write(script)
         script_path = tmp.name
-    result = run_cmd(["diskpart", "/s", script_path])
-    Path(script_path).unlink(missing_ok=True)
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "diskpart failed")
+    helper_path = ""
+    try:
+        helper = _windows_format_helper(disk_number, script_path)
+        with tempfile.NamedTemporaryFile("w", suffix=".ps1", delete=False, encoding="utf-8-sig") as helper_file:
+            helper_file.write(helper)
+            helper_path = helper_file.name
+        command = (
+            "$ErrorActionPreference='Stop';"
+            f"$p=Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',{_powershell_literal(helper_path)}) "
+            "-Verb RunAs -Wait -PassThru; exit $p.ExitCode"
+        )
+        result = run_cmd(["powershell", "-NoProfile", "-NonInteractive", "-Command", command])
+        if result.returncode != 0:
+            raise RuntimeError(
+                "Formatting was cancelled or Windows DiskPart could not format the device. "
+                "Approve the Administrator prompt and make sure no files on the USB are open."
+            )
+    finally:
+        Path(script_path).unlink(missing_ok=True)
+        if helper_path:
+            Path(helper_path).unlink(missing_ok=True)
     return "formatted with diskpart"
+
+
+def wait_windows_mount(disk_number: int, retries: int = 40, delay_sec: float = 0.5) -> Path:
+    query = (
+        f"$p=Get-Partition -DiskNumber {disk_number} -ErrorAction SilentlyContinue | "
+        "Where-Object DriveLetter | Select-Object -First 1;"
+        "if($p){Write-Output ($p.DriveLetter + ':\\')}"
+    )
+    for _ in range(retries):
+        result = run_cmd(["powershell", "-NoProfile", "-NonInteractive", "-Command", query])
+        mount = result.stdout.strip()
+        if result.returncode == 0 and mount and Path(mount).is_dir():
+            return Path(mount)
+        time.sleep(delay_sec)
+    raise RuntimeError("Formatting finished, but Windows did not mount the new volume. Reconnect the USB and refresh devices.")
 
 
 def format_linux(device: str, label: str) -> str:
@@ -211,10 +235,10 @@ def format_target(path: Path, label: str, on_step_callback: Callable[[str, str],
 
     if is_windows():
         disk_number = int(info["disk_number"])
-        on_step_callback("info", f"formatting disk #{disk_number} via diskpart")
+        on_step_callback("info", "Waiting for Windows Administrator approval…")
         format_windows(disk_number, safe_label)
-        mount = path
-        on_step_callback("success", "formatted with diskpart")
+        mount = wait_windows_mount(disk_number)
+        on_step_callback("success", f"Formatted and mounted as {mount}")
         return mount
 
     if is_linux():

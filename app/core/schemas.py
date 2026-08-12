@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 
@@ -18,23 +18,10 @@ class FormatTargetRequest:
 
 
 @dataclass
-class ArtSearchRequest:
-    target_path: Optional[str] = None
-    game_name: Optional[str] = None
-    source_filename: Optional[str] = None
-    max_results: int = 10
-
-
-@dataclass
-class ArtSelection:
-    art_type: str
-    image_url: str
-
-
-@dataclass
-class ArtSaveRequest:
+class ArtworkUploadRequest:
     target_path: str
-    selections: list[ArtSelection] = field(default_factory=list)
+    image_path: str
+    art_type: str = "COV"
     game_name: Optional[str] = None
     source_filename: Optional[str] = None
 
