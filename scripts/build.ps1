@@ -18,7 +18,7 @@ $Constants = Get-Content (Join-Path $ProjectRoot "app\core\constants.py") -Raw
 $Match = [regex]::Match($Constants, 'APP_VERSION\s*=\s*"([^"]+)"')
 if (-not $Match.Success) { throw "APP_VERSION was not found." }
 $Version = $Match.Groups[1].Value
-& $FletExe pack "app\main.py" -D --name "PS2 Toolkit 2000X" --distpath $OutputDir --product-name "PS2 TOOLKIT 2000X" --file-description "PS2 Game Importer and OPL USB Manager" --product-version $Version --file-version "$Version.0" --uac-admin -y
+& $FletExe pack "app\main.py" -D --name "PS2 Toolkit 2000X" --distpath $OutputDir --product-name "PS2 TOOLKIT 2000X" --file-description "PS2 Game Importer and OPL USB Manager" --product-version $Version --file-version "$Version.0" --uac-admin "--pyinstaller-build-args=--paths=$ProjectRoot" -y
 if ($LASTEXITCODE -ne 0) { throw "Flet/PyInstaller build failed." }
 
 $Executable = Join-Path $OutputDir "PS2 Toolkit 2000X\PS2 Toolkit 2000X.exe"

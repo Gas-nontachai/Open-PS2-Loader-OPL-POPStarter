@@ -119,3 +119,51 @@ This is a native packaged Flet desktop application. It does not run an API or we
 - **Administrator prompt at startup:** expected behavior. Click **Yes** to allow storage management; choosing **No** cancels application startup.
 
 See [docs/HOW_TO_USE.md](docs/HOW_TO_USE.md) and [docs/windows-release.md](docs/windows-release.md).
+
+## Windows CI and tag releases
+
+`.github/workflows/windows.yml` runs the regression suite on Windows Server
+2022 and 2025 runners, then builds the Windows x64 application and Inno Setup
+installer. It silently installs the installer and opens the installed app to
+capture `windows-home.png`. A missing window or blank capture fails the build.
+Pushes and pull requests provide the installer and screenshot as Actions artifacts.
+These runners do not replace testing Windows 10/11 with physical USB hardware.
+
+To publish a release, update `APP_VERSION` in `app/core/constants.py`, commit the
+changes, and push a matching tag yourself, for example:
+
+```powershell
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Only `v*` tags publish GitHub Releases, and the tag must equal `v` + `APP_VERSION`.
+The release includes the downloadable setup `.exe`, full-size screenshot and
+SHA-256 checksums. Its notes show the screenshot at **150 pixels wide**, linked
+to the original. The installer bundles the application runtime; do not distribute
+only the inner application executable without its accompanying files.
+No code-signing certificate is configured, so Windows may show SmartScreen warnings.
+
+### Testing the Liberty City Stories ISO locally
+
+CI generates a small ISO containing `SYSTEM.CNF` with boot ID `SLUS_214.23`.
+To run the same integration scenarios against your own full game image on Windows:
+
+```powershell
+$env:PS2_TEST_ISO = (Resolve-Path '.\Grand Theft Auto - Liberty City Stories (USA).iso').Path
+.\.venv\Scripts\python.exe -m pytest -v --junitxml=test-results.xml
+Remove-Item Env:PS2_TEST_ISO
+```
+
+The integration tests use temporary destinations and mock **only USB device
+validation/filesystem classification**; they never format or write to a real USB.
+They check ISO ID extraction, FAT32/exFAT/NTFS direct import, FAT16 splitting when
+needed, SHA-256 integrity, duplicate skipping, scan/manifest/delete, successful
+overwrite, cancellation during copying, disk-full overwrite recovery and invalid
+input. Existing tests also exercise forced FAT32 splitting, low-space preflight,
+disconnection cleanup, artwork and Windows storage safety. Filesystem labels in
+these tests are simulated, not actual mounted filesystems. The supplied ISO is
+4,010,016,768 bytes, below FAT32's 4,294,967,295-byte single-file limit.
+
+Allow at least 5 GB free temporary disk space for the real-image run. Game images
+are ignored by Git and are never uploaded by this workflow.

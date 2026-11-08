@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import PureWindowsPath
+from types import SimpleNamespace
 from subprocess import CompletedProcess
 from unittest.mock import patch
 
@@ -65,14 +67,14 @@ class StorageSafetyTests(unittest.TestCase):
         self.assertFalse(drive_service.classify_windows_records([record(BusType="Unknown")])[0].is_safe_target)
 
     def test_disconnected_device_rejected(self) -> None:
-        with patch.object(drive_service, "list_all_windows_storage", return_value=[]), patch.object(drive_service.os, "name", "nt"):
+        with patch.object(drive_service, "list_all_windows_storage", return_value=[]), patch.object(drive_service, "os", SimpleNamespace(name="nt")), patch.object(drive_service, "Path", PureWindowsPath):
             with self.assertRaises(UnsafeDriveError):
                 drive_service.validate_external_storage("E:\\")
 
     def test_changed_device_rejected(self) -> None:
         old = drive_service.classify_windows_records([record(UniqueId="old")])[0]
         new = drive_service.classify_windows_records([record(UniqueId="new")])[0]
-        with patch.object(drive_service, "list_all_windows_storage", return_value=[new]), patch.object(drive_service.os, "name", "nt"):
+        with patch.object(drive_service, "list_all_windows_storage", return_value=[new]), patch.object(drive_service, "os", SimpleNamespace(name="nt")), patch.object(drive_service, "Path", PureWindowsPath):
             with self.assertRaises(UnsafeDriveError):
                 drive_service.validate_external_storage("E:\\", old.device_id)
 

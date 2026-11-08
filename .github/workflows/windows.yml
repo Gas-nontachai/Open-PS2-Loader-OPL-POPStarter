@@ -1,0 +1,105 @@
+name: Windows CI and release
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m pytest -v --junitxml=test-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tests-${{ matrix.os }}
+          path: test-results.xml
+
+  build:
+    needs: test
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Validate release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $Version = python -c "from app.core.constants import APP_VERSION; print(APP_VERSION)"
+          if ($env:RELEASE_TAG -cne "v$Version") { throw "Tag must match APP_VERSION: v$Version" }
+      - name: Install build tools
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+          }
+      - name: Build and package
+        run: .\scripts\release.ps1
+      - name: Install and capture Windows app
+        run: |
+          $Installer = Get-ChildItem dist\*-Setup-*.exe | Select-Object -First 1
+          $InstallDir = Join-Path $env:RUNNER_TEMP 'PS2ToolkitInstalled'
+          $Process = Start-Process $Installer.FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$InstallDir`"") -Wait -PassThru
+          if ($Process.ExitCode -ne 0) { throw "Installer failed: $($Process.ExitCode)" }
+          .\.venv\Scripts\python.exe scripts\capture_windows.py "$InstallDir\PS2 Toolkit 2000X.exe" dist\windows-home.png
+          if ($LASTEXITCODE -ne 0) { throw 'Installed application smoke test failed' }
+      - name: Checksums
+        run: |
+          Get-ChildItem dist -File | Where-Object { $_.Extension -in '.exe', '.png' } | ForEach-Object {
+            $Hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$Hash  $($_.Name)"
+          } | Set-Content dist\SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: dist/*
+          if-no-files-found: error
+      - name: Publish tag release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          $Base = "https://github.com/$env:REPOSITORY/releases/download/$env:RELEASE_TAG"
+          $Installer = (Get-ChildItem dist\*-Setup-*.exe | Select-Object -First 1).Name
+          @"
+          Windows x64 installer: [$Installer]($Base/$Installer)
+
+          Screenshot from the installed Windows application (click to enlarge):
+
+          <a href="$Base/windows-home.png"><img src="$Base/windows-home.png" width="150" alt="PS2 Toolkit Windows home screen"></a>
+
+          SHA-256 checksums and the full screenshot are attached below.
+          Automated tests use synthetic ISOs; commercial game images are not included.
+          "@ | Set-Content release-notes.md
+          gh release create $env:RELEASE_TAG --verify-tag --title "PS2 TOOLKIT 2000X $env:RELEASE_TAG" --notes-file release-notes.md dist/*
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
