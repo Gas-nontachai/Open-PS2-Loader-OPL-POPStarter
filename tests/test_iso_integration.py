@@ -176,3 +176,16 @@ def test_corrupt_ul_cfg_is_rejected_without_deleting_parts(tmp_path):
     with pytest.raises(ValueError, match="damaged"):
         usbextreme_service.remove_entry(tmp_path, "SLUS_214.23")
     assert part.read_bytes() == b"keep"
+
+
+def test_import_progress_reports_copy_complete_and_duplicate(source_iso, target):
+    events = []
+    result = import_controller.import_isos(str(target), [str(source_iso)], False, on_progress=events.append)
+    assert result["status"] == "success"
+    assert events[0]["percent"] == 0
+    assert events[-1]["state"] == "Imported" and events[-1]["percent"] == 100
+    assert all(e["path"] == str(source_iso) and e["index"] == e["total"] == 1 for e in events)
+    events.clear()
+    result = import_controller.import_isos(str(target), [str(source_iso)], False, on_progress=events.append)
+    assert result["details"]["imported_count"] == 0
+    assert events[-1]["state"] == "Skipped"

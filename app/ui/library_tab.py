@@ -3,18 +3,19 @@ from __future__ import annotations
 from typing import Callable
 
 import flet as ft
+from app.ui.theme import SURFACE, MUTED, BORDER, DESTRUCTIVE
 
 
 class LibraryTab(ft.Column):
     def __init__(self) -> None:
         self.scan_btn = ft.OutlinedButton("Refresh Library", icon=ft.Icons.REFRESH)
-        self.empty = ft.Text("No games found. Import games or refresh the library.", color=ft.Colors.GREY_400)
+        self.empty = ft.Text("No games found. Import games or refresh the library.", color=MUTED)
         self.games = ft.Column(spacing=8)
         self.storage = ft.Text("Select external storage to view its game library.")
         super().__init__(
             expand=False,
             controls=[
-                ft.Text("Game Library", size=28, weight=ft.FontWeight.BOLD),
+                ft.Text("Game Files", size=28, weight=ft.FontWeight.BOLD),
                 ft.Row([self.scan_btn, self.storage], wrap=True),
                 self.empty,
                 self.games,
@@ -30,14 +31,14 @@ class LibraryTab(ft.Column):
             thumbnail_image: ft.Control = (
                 ft.Image(src=cover, width=64, height=90, fit=ft.ImageFit.CONTAIN)
                 if cover
-                else ft.Icon(ft.Icons.IMAGE_NOT_SUPPORTED_OUTLINED, size=28, color=ft.Colors.GREY_600)
+                else ft.Icon(ft.Icons.IMAGE_NOT_SUPPORTED_OUTLINED, size=28, color=MUTED)
             )
             thumbnail = ft.Container(
                 content=thumbnail_image,
                 width=64,
                 height=90,
                 alignment=ft.alignment.center,
-                bgcolor=ft.Colors.GREY_900,
+                bgcolor=SURFACE,
                 border_radius=6,
                 clip_behavior=ft.ClipBehavior.HARD_EDGE,
             )
@@ -55,7 +56,7 @@ class LibraryTab(ft.Column):
                         max_lines=1,
                         overflow=ft.TextOverflow.ELLIPSIS,
                     ),
-                    ft.Text("Ready", color=ft.Colors.GREEN_300),
+                    ft.Text("Found on storage (playability not verified)", color=MUTED),
                 ],
                 expand=True,
                 spacing=3,
@@ -65,7 +66,7 @@ class LibraryTab(ft.Column):
                 ft.Container(
                     height=116,
                     padding=10,
-                    border=ft.border.all(1, ft.Colors.GREY_800),
+                    border=ft.border.all(1, BORDER),
                     border_radius=10,
                     content=ft.Row(
                         [
@@ -78,7 +79,7 @@ class LibraryTab(ft.Column):
                             ),
                             ft.IconButton(
                                 icon=ft.Icons.DELETE_OUTLINE,
-                                icon_color=ft.Colors.RED_300,
+                                icon_color=DESTRUCTIVE,
                                 tooltip="Delete game",
                                 on_click=lambda _, selected=game: on_delete(selected),
                             ),
@@ -91,6 +92,9 @@ class LibraryTab(ft.Column):
             )
 
     def update_storage(self, summary: dict) -> None:
+        if not summary:
+            self.storage.value = "Select external storage to view its game library."
+            return
         self.storage.value = (
             f"{summary.get('count', 0)} games • {summary.get('games_human', '0 B')} • "
             f"{summary.get('free_human', '0 B')} free"

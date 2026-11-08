@@ -60,8 +60,8 @@ def validate_format_target_macos(path: Path) -> tuple[str, dict[str, Any], dict[
     return whole_disk, info, whole_info
 
 
-def validate_format_target_windows(path: Path) -> dict[str, Any]:
-    device = drive_service.validate_external_storage(path)
+def validate_format_target_windows(path: Path, expected_device_id: str | None = None) -> dict[str, Any]:
+    device = drive_service.validate_external_storage(path, expected_device_id)
     if device.disk_number is None:
         raise RuntimeError("unable to identify the external physical disk")
     disk_number = device.disk_number
@@ -96,12 +96,12 @@ def validate_format_target_linux(path: Path) -> dict[str, Any]:
     return {"device": device, "base": base}
 
 
-def validate_format_target(path: Path) -> dict[str, Any]:
+def validate_format_target(path: Path, expected_device_id: str | None = None) -> dict[str, Any]:
     if is_macos():
         disk, info, whole_info = validate_format_target_macos(path)
         return {"device": disk, "volume_info": info, "disk_info": whole_info}
     if is_windows():
-        return validate_format_target_windows(path)
+        return validate_format_target_windows(path, expected_device_id)
     if is_linux():
         return validate_format_target_linux(path)
     raise RuntimeError("unsupported platform for format")
@@ -217,10 +217,10 @@ def format_linux(device: str, label: str) -> str:
     return "formatted with mkfs.vfat"
 
 
-def format_target(path: Path, label: str, on_step_callback: Callable[[str, str], None]) -> Path:
+def format_target(path: Path, label: str, on_step_callback: Callable[[str, str], None], expected_device_id: str | None = None) -> Path:
     safe_label = sanitize_volume_label(label)
     on_step_callback("info", f"format target validation: {path}")
-    info = validate_format_target(path)
+    info = validate_format_target(path, expected_device_id)
 
     if is_macos():
         device = info["device"]

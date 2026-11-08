@@ -18,8 +18,9 @@ def _emit(callback: StepCB | None, status: str, message: str) -> None:
         callback(status, message)
 
 
-def get_artwork_status(target_path: str, game_id: str) -> dict:
+def get_artwork_status(target_path: str, game_id: str, expected_device_id: str | None = None) -> dict:
     try:
+        drive_service.validate_external_storage(target_path, expected_device_id)
         target = target_service.resolve_target(target_path)
         normalized_id = game_service.normalize_game_id(game_id)
         metadata = art_service.load_metadata(target)
@@ -67,6 +68,8 @@ def upload_art_manual(
             source = Path(file_path).expanduser().resolve()
             if not source.is_file() or source.suffix.lower() not in ART_ALLOWED_EXT:
                 return {"status": "error", "message": "Choose a valid PNG, JPG, JPEG, or WEBP image.", "details": {}}
+            if source.stat().st_size > 20 * 1024 * 1024:
+                return {"status": "error", "message": "Choose an image no larger than 20 MiB.", "details": {}}
             drive_service.validate_external_storage(target, expected_device_id)
             saved.append(
                 art_service.write_artwork(
@@ -133,7 +136,7 @@ def download_artwork(
         target = target_service.resolve_target(target_path)
         normalized_id = game_service.normalize_game_id(game_id)
         target_service.ensure_required_folders(target)
-        existing_status = get_artwork_status(str(target), normalized_id)["details"]["types"]
+        existing_status = get_artwork_status(str(target), normalized_id, expected_device_id)["details"]["types"]
         _emit(on_step, "working", f"Finding artwork for {normalized_id}…")
         candidates = _select_candidates(normalized_id, providers)
         if not candidates:

@@ -64,7 +64,7 @@ def format_target(
     expected_device_id: str | None = None,
 ) -> dict:
     try:
-        if confirm_phrase.strip().upper() != "FORMAT":
+        if confirm_phrase != "FORMAT":
             _emit(on_step, "error", "confirmation phrase mismatch")
             return {"status": "error", "message": "confirmation phrase mismatch", "details": {"expected": "FORMAT"}}
 
@@ -73,7 +73,7 @@ def format_target(
         if not target.exists():
             return {"status": "error", "message": "target path does not exist", "details": {"target": str(target)}}
 
-        mounted_path = format_service.format_target(target, volume_label, lambda s, m: _emit(on_step, s, m))
+        mounted_path = format_service.format_target(target, volume_label, lambda s, m: _emit(on_step, s, m), expected_device_id)
         _, created = target_service.ensure_required_folders(mounted_path)
         _emit(on_step, "success", "required folders created after format")
         return {
@@ -87,7 +87,7 @@ def format_target(
         return {"status": "error", "message": str(exc), "details": {"error": str(exc)}}
 
 
-def _copy_with_progress(src: Path, dst: Path, on_step: StepCB | None = None, cancel_event: Event | None = None) -> None:
+def _copy_with_progress(src: Path, dst: Path, on_step: StepCB | None = None, cancel_event: Event | None = None, on_progress: Callable[[int], None] | None = None) -> None:
     total = src.stat().st_size
     copied = 0
     chunk = 4 * 1024 * 1024
@@ -101,6 +101,8 @@ def _copy_with_progress(src: Path, dst: Path, on_step: StepCB | None = None, can
             wfh.write(data)
             copied += len(data)
             pct = int((copied / total) * 100) if total > 0 else 100
+            if on_progress:
+                on_progress(pct)
             _emit(
                 on_step,
                 "info",
@@ -119,7 +121,9 @@ def import_isos(
     on_step: StepCB | None = None,
     cancel_event: Event | None = None,
     expected_device_id: str | None = None,
+    on_progress: Callable[[dict], None] | None = None,
 ) -> dict:
+    imported: list[dict] = []
     try:
         if not iso_paths:
             return {"status": "error", "message": "no files selected", "details": {}}
@@ -132,11 +136,19 @@ def import_isos(
         target_service.ensure_required_folders(target)
 
         prepared: list[dict] = []
-        for iso in iso_paths:
+        for source_index, iso in enumerate(iso_paths, start=1):
             src = Path(iso).expanduser().resolve()
+
+            def validation(state: str) -> None:
+                if on_progress:
+                    on_progress({"index": source_index, "total": len(iso_paths), "path": str(src), "percent": 0, "state": state})
+
+            validation("Checking")
             if not src.exists() or not src.is_file():
+                validation("Failed: source file not found")
                 return {"status": "error", "message": "source file not found", "details": {"file": str(src)}}
             if src.suffix.lower() != ".iso":
+                validation("Failed: only ISO files are supported")
                 return {"status": "error", "message": "only .iso is allowed", "details": {"file": src.name}}
 
             size = src.stat().st_size
@@ -148,11 +160,13 @@ def import_isos(
                 game_id = game_service.extract_game_id_from_filename(src.name)
                 id_source = "filename"
             if not game_id:
+                validation("Failed: no PS2 Game ID found")
                 return {
                     "status": "error",
                     "message": "Unable to read PS2 game ID from this ISO.",
                     "details": {"file": src.name},
                 }
+            validation("Validated")
             filesystem = device.filesystem.upper()
             file_limit = (
                 usbextreme_service.FAT16_MAX_FILE_BYTES
@@ -187,7 +201,7 @@ def import_isos(
                 free=free_human,
             )
 
-        imported: list[dict] = []
+        skipped_count = 0
         prepared.sort(key=lambda x: int(x["size"]), reverse=True)
         for idx, item in enumerate(prepared, start=1):
             drive_service.validate_external_storage(target, expected_device_id)
@@ -198,6 +212,12 @@ def import_isos(
                     "details": {"imported_count": len(imported), "imported": imported},
                 }
             src = item["src"]
+
+            def report(percent: int, state: str = "Copying") -> None:
+                if on_progress:
+                    on_progress({"index": idx, "total": len(prepared), "path": str(src), "percent": percent, "state": state})
+
+            report(0)
             if item["split_for_fat"]:
                 entries = usbextreme_service.read_entries(target)
                 duplicate = next(
@@ -205,6 +225,8 @@ def import_isos(
                     None,
                 )
                 if duplicate and not overwrite:
+                    skipped_count += 1
+                    report(100, "Skipped")
                     _emit(on_step, "info", f"skipped duplicate: {item['game_name']}")
                     continue
                 if duplicate:
@@ -214,6 +236,7 @@ def import_isos(
 
                 def split_progress(copied: int, total: int) -> None:
                     pct = int((copied / total) * 100) if total else 100
+                    report(pct)
                     _emit(
                         on_step,
                         "info",
@@ -264,11 +287,14 @@ def import_isos(
                         "size": target_service.human_bytes(item["size"]),
                     }
                 )
+                report(100, "Imported")
                 _emit(on_step, "success", f"imported {entry.name} in {entry.parts} FAT32-safe parts")
                 continue
 
             destination = target / item["folder"] / item["dest_name"]
             if destination.exists() and not overwrite:
+                skipped_count += 1
+                report(100, "Skipped")
                 _emit(on_step, "info", f"skipped duplicate: {item['dest_name']}")
                 continue
 
@@ -276,9 +302,10 @@ def import_isos(
             temporary = destination.with_name(destination.name + ".part")
             temporary.unlink(missing_ok=True)
             try:
-                _copy_with_progress(src, temporary, on_step=on_step, cancel_event=cancel_event)
+                _copy_with_progress(src, temporary, on_step=on_step, cancel_event=cancel_event, on_progress=report)
                 temporary.replace(destination)
             except OperationCancelledError:
+                report(0, "Cancelled")
                 temporary.unlink(missing_ok=True)
                 return {
                     "status": "cancelled",
@@ -309,20 +336,24 @@ def import_isos(
                     "size": target_service.human_bytes(item["size"]),
                 }
             )
+            report(100, "Imported")
             _emit(on_step, "success", f"imported {item['dest_name']}")
 
         return {
             "status": "success",
-            "message": "all files imported successfully",
+            "message": "Import finished (existing games may have been skipped)",
             "details": {
                 "target": str(target),
                 "imported_count": len(imported),
                 "imported": imported,
+                "skipped_count": skipped_count,
                 "manifest_path": str(game_service.manifest_path(target)),
             },
         }
     except Exception as exc:  # noqa: BLE001
         logger.exception("Import failed")
+        if "report" in locals():
+            report(0, "Cancelled" if isinstance(exc, OperationCancelledError) else "Failed")
         no_space = isinstance(exc, OSError) and (getattr(exc, "errno", None) == 28 or getattr(exc, "winerror", None) == 112)
         if no_space:
             message = "The USB does not have enough usable free space. Remove a game or use a larger USB, then try again."
@@ -332,10 +363,10 @@ def import_isos(
                 "status": "cancelled",
                 "message": "Import cancelled. Incomplete files were removed.",
                 "message_th": "ยกเลิกการนำเข้าแล้ว และลบไฟล์ที่คัดลอกไม่เสร็จเรียบร้อย",
-                "details": {},
+                "details": {"imported_count": len(imported), "imported": imported},
             }
         else:
             message = f"Could not import the game: {exc}"
             message_th = f"นำเข้าเกมไม่ได้: {exc}"
         _emit(on_step, "error", message)
-        return _import_error(message, message_th, exc)
+        return _import_error(message, message_th, exc, imported_count=len(imported), imported=imported)
