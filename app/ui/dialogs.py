@@ -111,3 +111,24 @@ def _close_dialog(page: ft.Page) -> None:
 def _confirm_then_close(page: ft.Page, on_confirm: Callable[[], None]) -> None:
     _close_dialog(page)
     on_confirm()
+
+
+def show_update_banner(page: ft.Page, release: dict[str, str]) -> None:
+    from app.core.constants import APP_VERSION
+    from app.core.i18n import get_lang
+
+    thai = get_lang() == "th"
+    message = (
+        f"มีเวอร์ชันใหม่ {release['version']} (ปัจจุบัน {APP_VERSION}) แนะนำให้อัปเดต"
+        if thai else
+        f"Version {release['version']} is available (installed: {APP_VERSION}). We recommend updating."
+    )
+    banner = ft.Banner(
+        leading=ft.Icon(ft.Icons.SYSTEM_UPDATE),
+        content=ft.Text(message),
+        actions=[
+            ft.TextButton("ดาวน์โหลด" if thai else "Download", on_click=lambda _: page.launch_url(release["url"])),
+            ft.TextButton("ไว้ภายหลัง" if thai else "Later", on_click=lambda _: page.close(banner)),
+        ],
+    )
+    page.open(banner)

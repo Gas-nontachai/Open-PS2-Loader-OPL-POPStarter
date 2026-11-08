@@ -89,7 +89,9 @@ build\windows\PS2 Toolkit 2000X\PS2 Toolkit 2000X.exe
 dist\PS2-Toolkit-2000X-Setup-1.0.0.exe
 ```
 
-The release version has one source of truth: `APP_VERSION` in `app/core/constants.py`.
+Tag releases derive their version from `vMAJOR.MINOR.PATCH`; CI writes it into
+`APP_VERSION` in `app/core/constants.py` only in the build workspace.
+Local builds use the version stored in Git.
 
 ## Project structure
 
@@ -125,22 +127,49 @@ See [docs/HOW_TO_USE.md](docs/HOW_TO_USE.md) and [docs/windows-release.md](docs/
 `.github/workflows/windows.yml` runs the regression suite on Windows Server
 2022 and 2025 runners, then builds the Windows x64 application and Inno Setup
 installer. It silently installs the installer and opens the installed app to
-capture `windows-home.png`. A missing window or blank capture fails the build.
-Pushes and pull requests provide the installer and screenshot as Actions artifacts.
+capture five pages: Home, Import Games, Games & Artwork, USB/Storage and Settings.
+A missing window, blank capture or duplicate image fails the build. Screenshot
+capture opens each page with the internal `--screenshot-page` command-line option;
+this uses the real UI and suppresses the update banner only during capture.
+Pushes and pull requests provide the installer and screenshots as Actions artifacts.
 These runners do not replace testing Windows 10/11 with physical USB hardware.
 
-To publish a release, update `APP_VERSION` in `app/core/constants.py`, commit the
-changes, and push a matching tag yourself, for example:
+To publish a release, commit and push your changes, then tag the commit you want to release. You do not need to edit `APP_VERSION`:
 
 ```powershell
-git tag v1.0.0
-git push origin v1.0.0
+git pull --ff-only
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
-Only `v*` tags publish GitHub Releases, and the tag must equal `v` + `APP_VERSION`.
-The release includes the downloadable setup `.exe`, full-size screenshot and
-SHA-256 checksums. Its notes show the screenshot at **150 pixels wide**, linked
-to the original. The installer bundles the application runtime; do not distribute
+Only stable `vMAJOR.MINOR.PATCH` tags publish GitHub Releases. Each component
+must be <= 65535 for Windows executable metadata. After the test matrix passes,
+CI stamps the tag version into `APP_VERSION` only in its temporary build
+workspace, then builds and reruns tests with that version. The executable,
+installer and in-app update checker all use the stamped version.
+
+CI creates no version commit, pushes no source changes and never moves the tag.
+The source version stored in Git may therefore differ from the released binary;
+reproducing a release locally requires stamping its tag before building:
+
+```powershell
+$env:RELEASE_TAG = "v1.1.0"
+python scripts/stamp_release.py
+.\scripts\release.ps1
+```
+
+This changes only the local working copy. Release notes identify the tagged
+source commit used for the build. GitHub write permission is used to publish
+release assets, not to update branches.
+
+The release includes the downloadable setup `.exe`, five full-size screenshots
+and SHA-256 checksums. Its Thai notes describe the app's capabilities, installation,
+network requirements and testing limits. Each screenshot is displayed at **150
+pixels wide**, linked to the original. The change list is generated from actual
+non-merge commits since the nearest preceding reachable `v*` tag, with a full
+comparison link. The first release lists all non-merge commits. Descriptive commit
+subjects therefore make release notes more useful; no update claims are invented.
+The renderer is `scripts/release_notes.py`. The installer bundles the application runtime; do not distribute
 only the inner application executable without its accompanying files.
 No code-signing certificate is configured, so Windows may show SmartScreen warnings.
 
@@ -167,3 +196,17 @@ these tests are simulated, not actual mounted filesystems. The supplied ISO is
 
 Allow at least 5 GB free temporary disk space for the real-image run. Game images
 are ignored by Git and are never uploaded by this workflow.
+
+## Startup update recommendations
+
+The app checks this repository's latest published GitHub Release in the
+background once per launch. If its stable `vMAJOR.MINOR.PATCH` tag is newer than
+`APP_VERSION`, a dismissible banner shows the installed and available versions.
+**Download** opens the project's release page in the browser; **Later** dismisses
+the recommendation for this session. The app never installs an update itself.
+
+Drafts, prereleases, equal/older versions and malformed responses are ignored.
+Offline connections, timeouts, missing releases and API rate limits do not
+interrupt startup. The request uses a five-second network timeout and no GitHub
+token; release checks therefore require publicly readable releases. All game and
+USB features remain usable offline.

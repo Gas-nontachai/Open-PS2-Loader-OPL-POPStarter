@@ -41,17 +41,20 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
-      - name: Validate release tag
+      - name: Stamp tag version in build workspace
         if: startsWith(github.ref, 'refs/tags/')
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          $Version = python -c "from app.core.constants import APP_VERSION; print(APP_VERSION)"
-          if ($env:RELEASE_TAG -cne "v$Version") { throw "Tag must match APP_VERSION: v$Version" }
+          python scripts/stamp_release.py
+          if ($LASTEXITCODE -ne 0) { throw 'Version stamping failed; build stopped' }
       - name: Install build tools
         run: |
           python -m venv .venv
@@ -69,7 +72,7 @@ jobs:
           $InstallDir = Join-Path $env:RUNNER_TEMP 'PS2ToolkitInstalled'
           $Process = Start-Process $Installer.FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$InstallDir`"") -Wait -PassThru
           if ($Process.ExitCode -ne 0) { throw "Installer failed: $($Process.ExitCode)" }
-          .\.venv\Scripts\python.exe scripts\capture_windows.py "$InstallDir\PS2 Toolkit 2000X.exe" dist\windows-home.png
+          .\.venv\Scripts\python.exe scripts\capture_windows.py "$InstallDir\PS2 Toolkit 2000X.exe" dist
           if ($LASTEXITCODE -ne 0) { throw 'Installed application smoke test failed' }
       - name: Checksums
         run: |
@@ -89,17 +92,7 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          $Base = "https://github.com/$env:REPOSITORY/releases/download/$env:RELEASE_TAG"
-          $Installer = (Get-ChildItem dist\*-Setup-*.exe | Select-Object -First 1).Name
-          @"
-          Windows x64 installer: [$Installer]($Base/$Installer)
-
-          Screenshot from the installed Windows application (click to enlarge):
-
-          <a href="$Base/windows-home.png"><img src="$Base/windows-home.png" width="150" alt="PS2 Toolkit Windows home screen"></a>
-
-          SHA-256 checksums and the full screenshot are attached below.
-          Automated tests use synthetic ISOs; commercial game images are not included.
-          "@ | Set-Content release-notes.md
+          .\.venv\Scripts\python.exe scripts/release_notes.py
+          if ($LASTEXITCODE -ne 0) { throw 'Release notes generation failed' }
           gh release create $env:RELEASE_TAG --verify-tag --title "PS2 TOOLKIT 2000X $env:RELEASE_TAG" --notes-file release-notes.md dist/*
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

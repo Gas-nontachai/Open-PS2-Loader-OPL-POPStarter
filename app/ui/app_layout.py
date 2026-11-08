@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import threading
 from dataclasses import asdict
 from pathlib import Path
@@ -10,7 +11,7 @@ import flet as ft
 from app.controllers import art_controller, game_controller, import_controller
 from app.core import config as config_service, i18n
 from app.core.constants import APP_NAME, APP_VERSION, REQUIRED_FOLDERS
-from app.services import drive_service, target_service
+from app.services import drive_service, target_service, update_service
 from app.ui import dialogs
 from app.ui.art_tab import ArtTab
 from app.ui.home_page import HomePage
@@ -20,7 +21,7 @@ from app.ui.state import AppState, AppStore
 from app.ui.storage_page import StoragePage
 
 
-def build_app(page: ft.Page) -> None:
+def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
     page.title = APP_NAME
     page.window.width = 1240
     page.window.height = 820
@@ -594,4 +595,12 @@ def build_app(page: ft.Page) -> None:
         content=ft.Row(list(nav_buttons.values()), wrap=True, spacing=4),
     )
     page.add(ft.Column([nav, content, status_bar], expand=True, spacing=0))
-    switch_page("home")
+    switch_page(screenshot_page or "home")
+
+    async def check_updates() -> None:
+        release = await asyncio.to_thread(update_service.check_for_update)
+        if release:
+            dialogs.show_update_banner(page, release)
+
+    if screenshot_page is None:
+        page.run_task(check_updates)

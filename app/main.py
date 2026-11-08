@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import argparse
+from functools import partial
 import sys
 from pathlib import Path
 
@@ -14,9 +16,12 @@ from app.core.logging import configure_logging
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--screenshot-page", choices=["home", "import", "library", "storage", "settings"], help="Open a page for release screenshot capture")
+    args = parser.parse_args()
     load_dotenv()
     configure_logging()
-    ft.app(target=build_app)
+    ft.app(target=partial(build_app, screenshot_page=args.screenshot_page))
 
 
 if __name__ == "__main__":

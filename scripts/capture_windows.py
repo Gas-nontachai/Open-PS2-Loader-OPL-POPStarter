@@ -11,8 +11,7 @@ import time
 from PIL import ImageGrab, ImageStat
 
 
-def main() -> None:
-    executable, output = Path(sys.argv[1]).resolve(), Path(sys.argv[2])
+def capture(executable: Path, output: Path, page: str) -> None:
     if sys.platform != "win32" or not executable.is_file():
         raise RuntimeError("An installed Windows executable is required")
     user32 = ctypes.windll.user32
@@ -22,7 +21,7 @@ def main() -> None:
     user32.SetForegroundWindow.argtypes = [wintypes.HWND]
     user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
     user32.SetProcessDPIAware()
-    process = subprocess.Popen([str(executable)])
+    process = subprocess.Popen([str(executable), "--screenshot-page", page])
     callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     windows = []
 
@@ -58,6 +57,19 @@ def main() -> None:
         image.save(output)
     finally:
         subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True)
+
+
+SCREENSHOT_PAGES = ("home", "import", "library", "storage", "settings")
+
+
+def main() -> None:
+    executable, directory = Path(sys.argv[1]).resolve(), Path(sys.argv[2])
+    captures = []
+    for page in SCREENSHOT_PAGES:
+        output = directory / f"windows-{page}.png"
+        capture(executable, output, page)
+        captures.append(output.read_bytes())
+    assert len(set(captures)) == 5, "Expected five distinct page screenshots"
 
 
 if __name__ == "__main__":
