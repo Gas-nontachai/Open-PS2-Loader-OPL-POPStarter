@@ -32,7 +32,6 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
     page.window.height = 820
     page.window.min_width = 820
     page.window.min_height = 620
-    page.window.prevent_close = False
     page.theme_mode = ft.ThemeMode.DARK
     page.theme = app_theme()
     page.bgcolor = BACKGROUND
@@ -333,16 +332,6 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
 
     cancel_operation_btn.on_click = request_cancel
 
-    def on_window_event(event: ft.ControlEvent) -> None:
-        if event.data == "close" and store.is_loading:
-            if operation_cancellable["value"]:
-                message = "A task is still running. Cancel it and wait for cleanup before closing."
-            else:
-                message = "A storage task is still running. Keep the app open until it finishes."
-            dialogs.show_snackbar(page, message, True)
-
-    page.on_window_event = on_window_event
-
     def run_async(
         function: Callable,
         *args,
@@ -359,7 +348,6 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             return
         store.is_loading = True
         store.current_state = state
-        page.window.prevent_close = True
         operation_cancellable["value"] = cancellable
         if cancellable:
             store.cancel_event.clear()
@@ -385,7 +373,6 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             def finish() -> None:
                 store.is_loading = False
                 operation_cancellable["value"] = False
-                page.window.prevent_close = False
                 home.disabled = storage.disabled = library.disabled = False
                 artwork.set_busy(False)
                 import_page.set_controls_enabled(True)
