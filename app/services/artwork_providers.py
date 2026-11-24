@@ -5,6 +5,7 @@ import logging
 import re
 import socket
 import ssl
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Callable, Protocol
 from urllib.error import HTTPError, URLError
@@ -12,6 +13,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from app.services import game_service
+from app.core.paths import app_resource_path
 
 logger = logging.getLogger("ps2_toolkit.artwork.providers")
 Fetch = Callable[[str], bytes]
@@ -50,7 +52,7 @@ class ArtworkProvider(Protocol):
     def find(self, game_id: str) -> list[ArtworkCandidate]: ...
 
 
-def fetch_url(url: str, timeout: int = 15) -> bytes:
+def fetch_url(url: str, timeout: int = 8) -> bytes:
     request = Request(url, headers={"User-Agent": "PS2-Toolkit-2000X/1.0", "Accept": "application/vnd.github+json"})
     try:
         with urlopen(request, timeout=timeout) as response:  # noqa: S310 - trusted provider URLs only
@@ -61,9 +63,23 @@ def fetch_url(url: str, timeout: int = 15) -> bytes:
         # Frozen Windows builds may not provide OpenSSL's default CA paths.
         # certifi is bundled with the app and provides a portable trust store.
         try:
-            import certifi
+            # Do not call create_default_context(cafile=...) here: on some
+            # frozen Windows Python builds it still probes the missing system
+            # OpenSSL paths before loading the supplied CA file.
+            bundled_ca = app_resource_path("certifi/cacert.pem")
+            if not bundled_ca.is_file():
+                # Source installs use certifi's package location.
+                import certifi
 
-            context = ssl.create_default_context(cafile=certifi.where())
+                bundled_ca = Path(certifi.where())
+            # The bundled Python runtime used for builds may customize
+            # SSLContext.__new__ to load a Codex-only CA file that is not
+            # shipped with the app. Use the underlying stdlib allocator, then
+            # explicitly load our bundled trust store below.
+            context = ssl._SSLContext.__new__(ssl.SSLContext, ssl.PROTOCOL_TLS_CLIENT)
+            context.load_verify_locations(cafile=str(bundled_ca))
+            context.check_hostname = True
+            context.verify_mode = ssl.CERT_REQUIRED
             with urlopen(request, timeout=timeout, context=context) as response:  # noqa: S310 - trusted provider URLs only
                 return response.read(25 * 1024 * 1024 + 1)
         except Exception as cert_exc:  # noqa: BLE001

@@ -167,6 +167,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         activity_text.visible = busy
         activity_spinner.visible = busy
         activity_progress.visible = busy
+        activity_progress.value = None if busy else 0
         cancel_operation_btn.visible = busy and cancellable
         cancel_operation_btn.disabled = False
         cancel_operation_btn.text = "Cancel"
@@ -390,6 +391,28 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         threading.Thread(target=worker, daemon=True).start()
 
     def progress(status: str, message: str) -> None:
+        if status == "progress" and message.startswith(("download|", "save|")):
+            phase, completed, total, filename = (message.split("|", 3) + [""] * 4)[:4]
+            try:
+                current, count = int(completed), int(total)
+            except ValueError:
+                return
+            ratio = current / count if count else 1.0
+            def update_art_progress() -> None:
+                if phase == "download":
+                    activity_progress.value = ratio * 0.85
+                    activity_text.value = f"Downloaded artwork {current}/{count} · {filename}"
+                else:
+                    activity_progress.value = 0.85 + ratio * 0.15
+                    activity_text.value = f"Saving artwork {current}/{count} · {filename}"
+                page.update()
+            ui_call(update_art_progress)
+            return
+        if message.startswith("copying "):
+            # Detailed per-file transfer progress is already shown in Import.
+            # Keep the global status bar concise so it does not get squeezed
+            # between the operation label and cancel control.
+            return
         ui_call(lambda: (set_status(message, status == "error"), page.update()))
 
     def on_iso_result(event: ft.FilePickerResultEvent) -> None:
