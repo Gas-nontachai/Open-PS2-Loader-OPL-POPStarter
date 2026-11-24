@@ -11,6 +11,7 @@ import flet as ft
 from app.controllers import art_controller, game_controller, import_controller
 from app.core import config as config_service, i18n
 from app.core.constants import APP_NAME, APP_VERSION, REQUIRED_FOLDERS
+from app.core.paths import app_resource_path
 from app.services import drive_service, target_service, update_service
 from app.ui import dialogs
 from app.ui.theme import app_theme, BACKGROUND, SURFACE, PRIMARY, TEXT, heading, danger_style
@@ -26,6 +27,7 @@ from app.ui.workspace_tab import WorkspaceTab
 
 def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
     page.title = APP_NAME
+    page.window.icon = str(app_resource_path("assets/app_icon.png"))
     page.window.width = 1240
     page.window.height = 820
     page.window.min_width = 820
