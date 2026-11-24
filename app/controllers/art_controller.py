@@ -191,6 +191,9 @@ def download_artwork(
     except ArtworkNetworkError as exc:
         logger.exception("Artwork provider unavailable game_id=%s", game_id)
         return {"status": "error", "message": f"{exc} You can retry or upload an image manually.", "details": {}}
+    except (TimeoutError, ConnectionError, OSError) as exc:
+        logger.exception("Artwork network or file access failed game_id=%s", game_id)
+        return {"status": "error", "message": f"Artwork source could not be reached or initialized ({exc}). Check network access and retry, or upload artwork manually.", "details": {"error": str(exc)}}
     except Exception as exc:  # noqa: BLE001
         logger.exception("Artwork download failed game_id=%s", game_id)
         return {"status": "error", "message": "Artwork could not be downloaded. Check your internet connection and try again.", "details": {"error": str(exc)}}

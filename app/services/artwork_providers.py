@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import socket
+import ssl
 from dataclasses import dataclass
 from typing import Callable, Protocol
 from urllib.error import HTTPError, URLError
@@ -56,6 +57,17 @@ def fetch_url(url: str, timeout: int = 15) -> bytes:
             return response.read(25 * 1024 * 1024 + 1)
     except HTTPError:
         raise
+    except FileNotFoundError as exc:
+        # Frozen Windows builds may not provide OpenSSL's default CA paths.
+        # certifi is bundled with the app and provides a portable trust store.
+        try:
+            import certifi
+
+            context = ssl.create_default_context(cafile=certifi.where())
+            with urlopen(request, timeout=timeout, context=context) as response:  # noqa: S310 - trusted provider URLs only
+                return response.read(25 * 1024 * 1024 + 1)
+        except Exception as cert_exc:  # noqa: BLE001
+            raise ArtworkNetworkError("Unable to initialize secure HTTPS certificates.") from cert_exc
     except (URLError, TimeoutError, socket.timeout) as exc:
         raise ArtworkNetworkError("Artwork source unavailable.") from exc
 
