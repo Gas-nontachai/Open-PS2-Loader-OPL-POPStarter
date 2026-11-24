@@ -12,6 +12,7 @@ class StoragePage(ft.Column):
         self.device_name = ft.Text("No external storage selected", size=22, weight=ft.FontWeight.BOLD)
         self.device_details = ft.Text("Connect a supported USB device and refresh.")
         self.structure = ft.Row([ft.Text(f"{folder}: Not checked", width=200) for folder in REQUIRED_FOLDERS], wrap=True)
+        self.filesystem_status = ft.Text("Connect a drive to check filesystem compatibility.", size=12, color=MUTED)
         self.prepare_btn = ft.FilledButton("Create / Repair OPL Structure", icon=ft.Icons.CREATE_NEW_FOLDER, disabled=True)
         self.format_btn = ft.OutlinedButton("Format Storage", icon=ft.Icons.WARNING_AMBER, disabled=True, style=danger_style())
         super().__init__(
@@ -24,6 +25,7 @@ class StoragePage(ft.Column):
                 panel([
                     ft.Row([ft.Icon(ft.Icons.USB, color=PRIMARY), self.device_name], spacing=10),
                     self.device_details,
+                    self.filesystem_status,
                     ft.Divider(color=BORDER),
                     ft.Text("OPL folder structure", size=18, weight=ft.FontWeight.BOLD, color=TEXT),
                     self.structure,
@@ -44,19 +46,33 @@ class StoragePage(ft.Column):
             ],
         )
 
-    def show_device(self, drive: dict | None, folders: dict[str, bool] | None = None) -> None:
+    def show_device(
+        self,
+        drive: dict | None,
+        folders: dict[str, bool] | None = None,
+        filesystem_supported: bool = True,
+    ) -> None:
         enabled = bool(drive)
-        self.prepare_btn.disabled = not enabled
-        self.format_btn.disabled = not enabled
+        self.prepare_btn.disabled = not enabled or not filesystem_supported
+        self.format_btn.disabled = not enabled or filesystem_supported
         if not drive:
             self.device_name.value = "No external storage selected"
             self.device_details.value = "Connect a supported USB device and refresh."
+            self.filesystem_status.value = "Connect a drive to check filesystem compatibility."
+            self.filesystem_status.color = MUTED
         else:
+            filesystem = str(drive.get("filesystem") or "Unknown")
             self.device_name.value = str(drive["model"])
             self.device_details.value = (
                 f"{drive['letter']} • {drive['storage_type']} • {drive['connection_type']} • {drive['filesystem']}\n"
                 f"{drive['total_human']} total • {drive['free_human']} free"
             )
+            if filesystem_supported:
+                self.filesystem_status.value = f"{filesystem} is supported. Formatting is not needed for this file system."
+                self.filesystem_status.color = SUCCESS
+            else:
+                self.filesystem_status.value = f"{filesystem} is not recognized as supported. Formatting erases the entire drive."
+                self.filesystem_status.color = DESTRUCTIVE
         states = folders or {}
         self.structure.controls = [
             ft.Text(f"{folder}: {'Present' if states.get(folder) else ('Missing' if drive else 'Not checked')}", color=SUCCESS if states.get(folder) else None, width=200)

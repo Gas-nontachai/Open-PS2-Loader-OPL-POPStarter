@@ -14,6 +14,22 @@ class HomePage(ft.Column):
         self.library_btn = ft.OutlinedButton("Open library", icon=ft.Icons.SPORTS_ESPORTS, disabled=True)
         self.artwork_btn = ft.TextButton("Artwork", icon=ft.Icons.IMAGE_OUTLINED, disabled=True)
         self.storage_btn = ft.TextButton("USB setup", icon=ft.Icons.USB, disabled=True)
+        self.readiness_icon = ft.Icon(ft.Icons.INFO_OUTLINE, color=MUTED)
+        self.readiness_title = ft.Text("Connect a drive to check it", weight=ft.FontWeight.BOLD)
+        self.readiness_message = ft.Text("We'll check its file system and OPL folders after selection.", size=12, color=MUTED)
+        self.readiness_action = ft.OutlinedButton("Check drive", visible=False)
+        self.readiness_action_mode = ""
+        self.readiness_card = ft.Container(
+            visible=False,
+            padding=14,
+            bgcolor=SURFACE_RAISED,
+            border_radius=12,
+            content=ft.Row(
+                [self.readiness_icon, ft.Column([self.readiness_title, self.readiness_message], spacing=3, expand=True), self.readiness_action],
+                spacing=10,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+        )
         hero = ft.Container(
             padding=28,
             border_radius=18,
@@ -56,6 +72,7 @@ class HomePage(ft.Column):
                     self.device_title,
                     self.device_details,
                     ft.Row([self.device_dropdown], expand=True),
+                    self.readiness_card,
                     ft.Container(
                         padding=14,
                         border_radius=12,
@@ -94,7 +111,12 @@ class HomePage(ft.Column):
             ],
         )
 
-    def show_device(self, drive: dict | None) -> None:
+    def show_device(
+        self,
+        drive: dict | None,
+        folders: dict[str, bool] | None = None,
+        filesystem_supported: bool = True,
+    ) -> None:
         connected = bool(drive)
         if drive:
             self.device_title.value = str(drive["model"])
@@ -104,3 +126,40 @@ class HomePage(ft.Column):
             self.device_details.value = "Connect a USB flash drive or external HDD/SSD to begin."
         for button in (self.import_btn, self.library_btn, self.artwork_btn, self.storage_btn):
             button.disabled = not connected
+        self.import_btn.disabled = not connected or not filesystem_supported
+        self.readiness_card.visible = connected
+        if not drive:
+            return
+
+        missing = [name for name, present in (folders or {}).items() if not present]
+        filesystem = str(drive.get("filesystem") or "Unknown")
+        if not filesystem_supported:
+            self.readiness_icon.name = ft.Icons.ERROR_OUTLINE
+            self.readiness_icon.color = "#FF727D"
+            self.readiness_title.value = "File system needs attention"
+            self.readiness_message.value = f"{filesystem} is not recognized as supported. Formatting erases all data on this drive."
+            self.readiness_card.bgcolor = "#24151E"
+            self.readiness_action.text = "Review format options"
+            self.readiness_action.icon = ft.Icons.WARNING_AMBER
+            self.readiness_action.visible = True
+            self.readiness_action.disabled = False
+            self.readiness_action_mode = "format"
+        elif missing:
+            self.readiness_icon.name = ft.Icons.FOLDER_OFF_OUTLINED
+            self.readiness_icon.color = "#F2BF66"
+            self.readiness_title.value = "OPL folders are missing"
+            self.readiness_message.value = f"Missing: {', '.join(missing)}. Create these folders without formatting or removing existing files."
+            self.readiness_card.bgcolor = "#292218"
+            self.readiness_action.text = "Create missing folders"
+            self.readiness_action.icon = ft.Icons.CREATE_NEW_FOLDER
+            self.readiness_action.visible = True
+            self.readiness_action.disabled = False
+            self.readiness_action_mode = "repair"
+        else:
+            self.readiness_icon.name = ft.Icons.CHECK_CIRCLE_OUTLINE
+            self.readiness_icon.color = SUCCESS
+            self.readiness_title.value = "Drive is ready"
+            self.readiness_message.value = f"{filesystem} and all required OPL folders are present."
+            self.readiness_card.bgcolor = "#172720"
+            self.readiness_action.visible = False
+            self.readiness_action_mode = ""

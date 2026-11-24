@@ -17,6 +17,7 @@ class ImportTab(ft.Column):
         self.selected_isos: list[str] = []
         self.available_bytes = 0
         self.required_bytes = 0
+        self.filesystem_supported = True
         self.file_statuses: dict[str, ft.Text] = {}
 
         self.drive_dropdown = ft.Dropdown(label="Destination Device", expand=True, options=[])
@@ -102,6 +103,7 @@ class ImportTab(ft.Column):
         self.drive_dropdown.value = None
         self.target_path.value = ""
         self.available_bytes = 0
+        self.filesystem_supported = True
         self.drive_details.value = "No external storage selected"
         self.summary_destination.value = "—"
         self.summary_available.value = "—"
@@ -114,7 +116,8 @@ class ImportTab(ft.Column):
         ]
         self.device_empty.visible = not bool(drives)
 
-    def show_drive(self, drive: dict) -> None:
+    def show_drive(self, drive: dict, filesystem_supported: bool = True) -> None:
+        self.filesystem_supported = filesystem_supported
         self.target_path.value = str(drive["path"])
         self.available_bytes = int(drive["free_bytes"])
         self.drive_details.value = (
@@ -149,7 +152,7 @@ class ImportTab(ft.Column):
         self._update_ready()
 
     def _update_ready(self) -> None:
-        self.import_btn.disabled = not bool(self.target_path.value and self.selected_isos and self.available_bytes >= self.required_bytes)
+        self.import_btn.disabled = not bool(self.filesystem_supported and self.target_path.value and self.selected_isos and self.available_bytes >= self.required_bytes)
         if self.target_path.value and self.selected_isos and self.available_bytes < self.required_bytes:
             self.progress_text.value = "Not enough space. Remove games or select a larger USB."
         elif not self.job_progress.visible:

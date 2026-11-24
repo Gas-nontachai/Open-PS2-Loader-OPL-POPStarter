@@ -189,6 +189,12 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         root = Path(store.target_path)
         return {folder: (root / folder).is_dir() for folder in REQUIRED_FOLDERS}
 
+    def selected_filesystem_supported(device: dict | None = None) -> bool:
+        record = device or selected_device()
+        filesystem = str((record or {}).get("filesystem") or "Unknown").strip().upper()
+        # These are the filesystems exercised by the import pipeline and its integration coverage.
+        return filesystem in {"FAT", "FAT16", "FAT32", "EXFAT", "NTFS"}
+
     def apply_selected_device(device: dict | None) -> None:
         previous_device_id = store.selected_device_id
         if not device:
@@ -207,9 +213,11 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         library.scan_btn.disabled = False
         home.device_dropdown.value = store.target_path
         import_page.drive_dropdown.value = store.target_path
-        import_page.show_drive(device)
-        home.show_device(device)
-        storage.show_device(device, inspect_folders())
+        import_page.show_drive(device, supported)
+        folders = inspect_folders()
+        supported = selected_filesystem_supported(device)
+        home.show_device(device, folders, supported)
+        storage.show_device(device, folders, supported)
         app_config.last_selected_drive = store.target_path
         config_service.save_config(app_config)
 
@@ -349,7 +357,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             library.set_games(games, ask_delete_game, open_artwork_for_game)
             library.update_storage(summary)
             artwork.update_source_choices(games)
-            storage.show_device(selected_device(), inspect_folders())
+            storage.show_device(selected_device(), inspect_folders(), selected_filesystem_supported())
             if switch_after:
                 switch_page("library", check_drive=False, rescan=False)
             if auto_art_pending["value"] and games:
@@ -418,7 +426,11 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             return
 
         def after(result: dict) -> None:
-            storage.show_device(selected_device(), inspect_folders())
+            device = selected_device()
+            folders = inspect_folders()
+            supported = selected_filesystem_supported(device)
+            storage.show_device(device, folders, supported)
+            home.show_device(device, folders, supported)
             dialogs.show_snackbar(page, str(result.get("message")), result.get("status") != "success")
 
         run_async(
@@ -664,6 +676,9 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
     artwork.cancel_batch_btn.on_click = lambda _: store.request_cancel()
     storage.prepare_btn.on_click = prepare_storage
     storage.format_btn.on_click = format_storage
+    home.readiness_action.on_click = lambda _: (
+        prepare_storage() if home.readiness_action_mode == "repair" else switch_page("storage")
+    )
     home.device_dropdown.on_change = choose_device
     home.refresh_btn.on_click = refresh_devices
     home.import_btn.on_click = lambda _: switch_page("import")
