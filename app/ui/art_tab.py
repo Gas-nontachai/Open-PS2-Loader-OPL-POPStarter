@@ -6,7 +6,7 @@ from app.ui.theme import danger_style, heading
 from typing import Callable
 
 import flet as ft
-from app.ui.theme import SURFACE, MUTED, BORDER, PRIMARY, SUCCESS, WARNING
+from app.ui.theme import SURFACE, MUTED, BORDER, PRIMARY, SUCCESS, WARNING, page_header
 
 from app.services.art_service import ARTWORK_SPECS
 
@@ -59,8 +59,9 @@ class ArtTab(ft.Column):
         self.artwork_grid = ft.ResponsiveRow(spacing=8, run_spacing=8)
 
         sidebar = ft.Container(
-            width=285,
-            padding=12,
+            width=320,
+            padding=18,
+            bgcolor=SURFACE,
             border=ft.border.all(1, BORDER),
             border_radius=12,
             content=ft.Column(
@@ -100,7 +101,7 @@ class ArtTab(ft.Column):
             controls=[
                 ft.Row(
                     [
-                        heading("Artwork"),
+                        page_header("Artwork studio", "Find, download, or replace covers for your PS2 games."),
                         ft.Text("Matched by PS2 Game ID • no API key", size=12, color=MUTED),
                     ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -271,7 +272,7 @@ class ArtTab(ft.Column):
         self.new_placeholder.visible = True
         self.save_btn.disabled = True
 
-    def set_busy(self, busy: bool, batch: bool = False) -> None:
+    def set_busy(self, busy: bool, cancellable: bool = False) -> None:
         self._busy = busy
         game_selected = bool(self.selected_game())
         for control in (self.search, self.game_dropdown, self.type_dropdown, self.asset_dropdown):
@@ -281,7 +282,9 @@ class ArtTab(ft.Column):
         self.refresh_btn.disabled = busy or not game_selected
         self.remove_btn.disabled = busy or not bool(self._status.get(str(self.type_dropdown.value), {}).get("files"))
         self.save_btn.disabled = busy or not game_selected or not bool(self._new_art_path)
-        self.cancel_batch_btn.visible = busy
+        self.cancel_batch_btn.visible = busy and cancellable
+        self.cancel_batch_btn.disabled = not busy or not cancellable
+        self.cancel_batch_btn.text = "Cancel artwork task" if cancellable else "Cancel"
 
     def translate(self) -> None:
         pass

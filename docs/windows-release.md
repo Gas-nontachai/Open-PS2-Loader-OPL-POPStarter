@@ -44,6 +44,8 @@ build\windows\PS2 Toolkit 2000X\PS2 Toolkit 2000X.exe
 ```
 
 The executable contains a `requireAdministrator` UAC manifest. Windows prompts for elevation whenever the installed application starts.
+The application window uses `assets\app_icon.png`; the build also embeds
+`assets\app_icon.ico` as the Windows executable icon.
 
 ## Build Installer
 

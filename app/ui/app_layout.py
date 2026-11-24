@@ -11,9 +11,10 @@ import flet as ft
 from app.controllers import art_controller, game_controller, import_controller
 from app.core import config as config_service, i18n
 from app.core.constants import APP_NAME, APP_VERSION, REQUIRED_FOLDERS
+from app.core.paths import app_resource_path
 from app.services import drive_service, target_service, update_service
 from app.ui import dialogs
-from app.ui.theme import app_theme, BACKGROUND, SURFACE, PRIMARY, TEXT, heading, danger_style
+from app.ui.theme import app_theme, BACKGROUND, SURFACE, PRIMARY, PRIMARY_SOFT, TEXT, MUTED, BORDER, SUCCESS, heading, danger_style, page_header, panel
 from app.ui.device_selection import retained_device
 from app.ui.art_tab import ArtTab
 from app.ui.home_page import HomePage
@@ -26,6 +27,7 @@ from app.ui.workspace_tab import WorkspaceTab
 
 def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
     page.title = APP_NAME
+    page.window.icon = str(app_resource_path("assets/app_icon.png"))
     page.window.width = 1240
     page.window.height = 820
     page.window.min_width = 820
@@ -69,8 +71,26 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             WorkspaceTab(text="Artwork", icon=ft.Icons.IMAGE_OUTLINED, content=artwork),
         ],
     )
-    status_text = ft.Text("No external storage selected")
-    status_bar = ft.Container(content=status_text, padding=10, bgcolor=SURFACE)
+    status_text = ft.Text("No external storage selected", expand=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
+    activity_text = ft.Text("", size=12, weight=ft.FontWeight.BOLD, color=PRIMARY, visible=False, max_lines=1)
+    activity_spinner = ft.ProgressRing(width=15, height=15, stroke_width=2, color=PRIMARY, visible=False)
+    activity_progress = ft.ProgressBar(value=None, height=2, visible=False)
+    cancel_operation_btn = ft.TextButton("Cancel", icon=ft.Icons.CANCEL_OUTLINED, visible=False)
+    status_bar = ft.Container(
+        content=ft.Column(
+            [
+                ft.Row(
+                    [ft.Icon(ft.Icons.USB, size=17, color=PRIMARY), status_text, ft.Container(expand=True), activity_spinner, activity_text, cancel_operation_btn],
+                    spacing=9,
+                ),
+                activity_progress,
+            ],
+            spacing=5,
+        ),
+        padding=ft.padding.symmetric(horizontal=22, vertical=8),
+        bgcolor=SURFACE,
+        border=ft.border.only(top=ft.BorderSide(1, BORDER)),
+    )
 
     settings_language = ft.Text("English")
     auto_artwork_checkbox = ft.Checkbox(
@@ -83,22 +103,26 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         scroll=ft.ScrollMode.AUTO,
         spacing=16,
         controls=[
-            heading("Settings"),
-            ft.Text("Language", size=18, weight=ft.FontWeight.BOLD),
-            settings_language,
-            settings_toggle,
-            ft.Divider(),
-            ft.Text("Artwork", size=18, weight=ft.FontWeight.BOLD),
-            auto_artwork_checkbox,
-            ft.Text("Uses the PS2 Game ID. No API key is required.", color=ft.Colors.GREY_400),
-            ft.Divider(),
-            ft.Text(APP_NAME, size=20, weight=ft.FontWeight.BOLD),
-            ft.Text(f"Version {APP_VERSION}"),
-            ft.Text("USB, import, library and manual artwork work offline. Artwork downloads and release checks require internet. Thai translation is partial."),
+            page_header("Settings", "Tune the way PS2 TOOLKIT works on this PC."),
+            panel([
+                ft.Text("Language", size=18, weight=ft.FontWeight.BOLD),
+                settings_language,
+                settings_toggle,
+            ]),
+            panel([
+                ft.Text("Artwork downloads", size=18, weight=ft.FontWeight.BOLD),
+                auto_artwork_checkbox,
+                ft.Text("Artwork matches by PS2 Game ID. No API key is required.", color=MUTED),
+            ]),
+            panel([
+                ft.Text(APP_NAME, size=20, weight=ft.FontWeight.BOLD),
+                ft.Text(f"Version {APP_VERSION}"),
+                ft.Text("USB, import, library and manual artwork work offline. Artwork downloads and release checks require internet.", color=MUTED),
+            ]),
         ],
     )
 
-    content = ft.Container(expand=True, padding=20, content=home)
+    content = ft.Container(expand=True, padding=ft.padding.symmetric(horizontal=32, vertical=28), content=home)
     nav_names = {
         "home": ("Home", "หน้าหลัก"),
         "import": ("Import Games", "นำเข้าเกม"),
@@ -113,7 +137,19 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         "storage": ft.Icons.USB,
         "settings": ft.Icons.SETTINGS_OUTLINED,
     }
-    nav_buttons = {name: ft.TextButton(label[0], icon=nav_icons[name]) for name, label in nav_names.items()}
+    nav_buttons = {
+        name: ft.TextButton(
+            label[0],
+            icon=nav_icons[name],
+            style=ft.ButtonStyle(
+                color=MUTED,
+                bgcolor=ft.Colors.TRANSPARENT,
+                padding=ft.padding.symmetric(horizontal=15, vertical=11),
+                shape=ft.RoundedRectangleBorder(radius=10),
+            ),
+        )
+        for name, label in nav_names.items()
+    }
 
     def ui_call(callback: Callable[[], None]) -> None:
         caller = getattr(page, "call_from_thread", None)
@@ -125,6 +161,16 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
     def set_status(message: str, error: bool = False) -> None:
         status_text.value = message
         status_text.color = ft.Colors.RED_300 if error else ft.Colors.GREEN_300
+
+    def set_activity(message: str = "", *, busy: bool = False, cancellable: bool = False) -> None:
+        activity_text.value = message
+        activity_text.visible = busy
+        activity_spinner.visible = busy
+        activity_progress.visible = busy
+        activity_progress.value = None if busy else 0
+        cancel_operation_btn.visible = busy and cancellable
+        cancel_operation_btn.disabled = False
+        cancel_operation_btn.text = "Cancel"
 
     def clear_game_views() -> None:
         store.scanned_games = []
@@ -145,8 +191,10 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         content.content = pages[name]
         for key, button in nav_buttons.items():
             button.style = ft.ButtonStyle(
-                bgcolor=PRIMARY if key == name else ft.Colors.TRANSPARENT,
-                color=BACKGROUND if key == name else TEXT,
+                bgcolor=PRIMARY_SOFT if key == name else ft.Colors.TRANSPARENT,
+                color=PRIMARY if key == name else MUTED,
+                padding=ft.padding.symmetric(horizontal=15, vertical=11),
+                shape=ft.RoundedRectangleBorder(radius=10),
             )
         set_status("Checking connected storage…") if check_drive else None
         page.update()
@@ -163,6 +211,12 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             return {}
         root = Path(store.target_path)
         return {folder: (root / folder).is_dir() for folder in REQUIRED_FOLDERS}
+
+    def selected_filesystem_supported(device: dict | None = None) -> bool:
+        record = device or selected_device()
+        filesystem = str((record or {}).get("filesystem") or "Unknown").strip().upper()
+        # These are the filesystems exercised by the import pipeline and its integration coverage.
+        return filesystem in {"FAT", "FAT16", "FAT32", "EXFAT", "NTFS"}
 
     def apply_selected_device(device: dict | None) -> None:
         previous_device_id = store.selected_device_id
@@ -182,9 +236,11 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         library.scan_btn.disabled = False
         home.device_dropdown.value = store.target_path
         import_page.drive_dropdown.value = store.target_path
-        import_page.show_drive(device)
-        home.show_device(device)
-        storage.show_device(device, inspect_folders())
+        folders = inspect_folders()
+        supported = selected_filesystem_supported(device)
+        import_page.show_drive(device, supported)
+        home.show_device(device, folders, supported)
+        storage.show_device(device, folders, supported)
         app_config.last_selected_drive = store.target_path
         config_service.save_config(app_config)
 
@@ -199,6 +255,12 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
 
     def apply_device_refresh(records: list[dict]) -> None:
         nonlocal available_devices
+        device_refresh["running"] = False
+        home.refresh_btn.disabled = False
+        import_page.refresh_drives_btn.disabled = False
+        home.device_dropdown.disabled = False
+        import_page.drive_dropdown.disabled = False
+        set_activity()
         available_devices = {str(record["path"]): record for record in records}
         import_page.set_drives(records)
         home.device_dropdown.options = [ft.dropdown.Option(key=r["path"], text=f"{r['letter']} | {r['model']} | {r['total_human']}") for r in records]
@@ -223,6 +285,12 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         if device_refresh["running"]:
             return
         device_refresh["running"] = True
+        home.refresh_btn.disabled = True
+        import_page.refresh_drives_btn.disabled = True
+        home.device_dropdown.disabled = True
+        import_page.drive_dropdown.disabled = True
+        set_activity("Checking connected USB drives…", busy=True)
+        page.update()
 
         def worker() -> None:
             try:
@@ -247,20 +315,48 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         threading.Thread(target=worker, daemon=True).start()
 
     def choose_device(event: ft.ControlEvent) -> None:
-        if store.is_loading:
+        if store.is_loading or device_refresh["running"]:
             return
         apply_selected_device(available_devices.get(str(event.control.value or "")))
         page.update()
 
-    def run_async(function: Callable, *args, state: AppState, done: Callable[[dict], None] | None = None) -> None:
+    operation_cancellable = {"value": False}
+
+    def request_cancel(_: ft.ControlEvent | None = None) -> None:
+        if not store.is_loading or not operation_cancellable["value"] or store.cancel_event.is_set():
+            return
+        store.request_cancel()
+        cancel_operation_btn.disabled = True
+        cancel_operation_btn.text = "Stopping…"
+        set_status("Cancellation requested. Finishing the current safe cleanup…")
+        page.update()
+
+    cancel_operation_btn.on_click = request_cancel
+
+    def run_async(
+        function: Callable,
+        *args,
+        state: AppState,
+        activity: str,
+        cancellable: bool = False,
+        done: Callable[[dict], None] | None = None,
+    ) -> None:
+        if device_refresh["running"]:
+            set_status("Please wait until the USB check is complete before starting another operation.")
+            page.update()
+            return
         if store.is_loading:
             return
         store.is_loading = True
         store.current_state = state
+        operation_cancellable["value"] = cancellable
+        if cancellable:
+            store.cancel_event.clear()
         home.disabled = storage.disabled = library.disabled = True
-        artwork.set_busy(True)
+        artwork.set_busy(True, cancellable=cancellable)
         import_page.set_controls_enabled(False)
-        set_status("Working…")
+        set_activity(activity, busy=True, cancellable=cancellable)
+        set_status("Please wait. Keep the USB connected until this operation finishes.")
         page.update()
 
         def worker() -> None:
@@ -277,9 +373,11 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
 
             def finish() -> None:
                 store.is_loading = False
+                operation_cancellable["value"] = False
                 home.disabled = storage.disabled = library.disabled = False
                 artwork.set_busy(False)
                 import_page.set_controls_enabled(True)
+                set_activity()
                 if result.get("device_unavailable"):
                     apply_selected_device(None)
                 success = result.get("status") == "success"
@@ -293,6 +391,28 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         threading.Thread(target=worker, daemon=True).start()
 
     def progress(status: str, message: str) -> None:
+        if status == "progress" and message.startswith(("download|", "save|")):
+            phase, completed, total, filename = (message.split("|", 3) + [""] * 4)[:4]
+            try:
+                current, count = int(completed), int(total)
+            except ValueError:
+                return
+            ratio = current / count if count else 1.0
+            def update_art_progress() -> None:
+                if phase == "download":
+                    activity_progress.value = ratio * 0.85
+                    activity_text.value = f"Downloaded artwork {current}/{count} · {filename}"
+                else:
+                    activity_progress.value = 0.85 + ratio * 0.15
+                    activity_text.value = f"Saving artwork {current}/{count} · {filename}"
+                page.update()
+            ui_call(update_art_progress)
+            return
+        if message.startswith("copying "):
+            # Detailed per-file transfer progress is already shown in Import.
+            # Keep the global status bar concise so it does not get squeezed
+            # between the operation label and cancel control.
+            return
         ui_call(lambda: (set_status(message, status == "error"), page.update()))
 
     def on_iso_result(event: ft.FilePickerResultEvent) -> None:
@@ -324,7 +444,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             library.set_games(games, ask_delete_game, open_artwork_for_game)
             library.update_storage(summary)
             artwork.update_source_choices(games)
-            storage.show_device(selected_device(), inspect_folders())
+            storage.show_device(selected_device(), inspect_folders(), selected_filesystem_supported())
             if switch_after:
                 switch_page("library", check_drive=False, rescan=False)
             if auto_art_pending["value"] and games:
@@ -337,6 +457,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             progress,
             store.selected_device_id,
             state=AppState.VALIDATING,
+            activity="Scanning the USB game library…",
             done=after,
         )
 
@@ -344,7 +465,6 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         if not store.target_path or not import_page.selected_isos:
             dialogs.show_snackbar(page, "Select external storage and at least one ISO file.", True)
             return
-        store.cancel_event.clear()
         import_page.clear_result()
         import_page.job_progress.visible = True
         import_page.job_progress.value = 0
@@ -385,6 +505,8 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             store.selected_device_id,
             lambda event: ui_call(lambda: (import_page.show_progress(event), page.update())),
             state=AppState.IMPORTING,
+            activity="Importing selected games…",
+            cancellable=True,
             done=after,
         )
 
@@ -393,7 +515,11 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             return
 
         def after(result: dict) -> None:
-            storage.show_device(selected_device(), inspect_folders())
+            device = selected_device()
+            folders = inspect_folders()
+            supported = selected_filesystem_supported(device)
+            storage.show_device(device, folders, supported)
+            home.show_device(device, folders, supported)
             dialogs.show_snackbar(page, str(result.get("message")), result.get("status") != "success")
 
         run_async(
@@ -403,6 +529,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             progress,
             store.selected_device_id,
             state=AppState.VALIDATING,
+            activity="Creating missing OPL folders…",
             done=after,
         )
 
@@ -422,6 +549,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
                 progress,
                 device_id,
                 state=AppState.FORMATTING,
+                activity="Formatting USB drive…",
                 done=lambda result: (dialogs.show_snackbar(page, str(result.get("message")), result.get("status") != "success"), refresh_devices()),
             )
 
@@ -439,6 +567,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
                 False,
                 store.selected_device_id,
                 state=AppState.IMPORTING,
+                activity="Deleting selected game…",
                 done=lambda result: (dialogs.show_snackbar(page, str(result.get("message")), result.get("status") != "success"), scan_library()),
             )
 
@@ -483,6 +612,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             progress,
             store.selected_device_id,
             state=AppState.ARTING,
+            activity="Saving artwork…",
             done=after,
         )
 
@@ -505,6 +635,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
                 store.selected_device_id,
                 artwork.selected_filename() if art_type == "SCR" else None,
                 state=AppState.ARTING,
+                activity="Removing artwork…",
                 done=lambda result: (dialogs.show_snackbar(page, str(result.get("message")), result.get("status") != "success"), refresh_artwork_status()),
             )
 
@@ -524,11 +655,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         if not game:
             dialogs.show_snackbar(page, "Select a game first.", True)
             return
-        store.cancel_event.clear()
-        artwork.set_busy(True)
-
         def after(result: dict) -> None:
-            artwork.set_busy(False)
             dialogs.show_snackbar(page, str(result.get("message")), result.get("status") not in {"success", "cancelled"})
             refresh_artwork_status()
 
@@ -541,6 +668,8 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             store.cancel_event,
             store.selected_device_id,
             state=AppState.ARTING,
+            activity="Downloading artwork…",
+            cancellable=True,
             done=after,
         )
 
@@ -567,11 +696,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         if not store.scanned_games:
             dialogs.show_snackbar(page, "Scan the game library first.", True)
             return
-        store.cancel_event.clear()
-        artwork.set_busy(True, batch=True)
-
         def after(result: dict) -> None:
-            artwork.set_busy(False)
             dialogs.show_snackbar(page, str(result.get("message")), result.get("status") not in {"success", "cancelled"})
             scan_library()
 
@@ -583,6 +708,8 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             store.cancel_event,
             store.selected_device_id,
             state=AppState.ARTING,
+            activity="Checking artwork for all games…",
+            cancellable=True,
             done=after,
         )
 
@@ -628,7 +755,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
     import_page.refresh_drives_btn.on_click = refresh_devices
     import_page.drive_dropdown.on_change = choose_device
     import_page.import_btn.on_click = request_import
-    import_page.cancel_btn.on_click = lambda _: store.request_cancel()
+    import_page.cancel_btn.on_click = request_cancel
     library.scan_btn.on_click = lambda _: scan_library()
     artwork.save_btn.on_click = save_artwork
     artwork.remove_btn.on_click = remove_artwork
@@ -636,9 +763,12 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
     artwork.refresh_btn.on_click = lambda _: refresh_artwork_status()
     artwork.replace_online_btn.on_click = confirm_replace_online
     artwork.batch_btn.on_click = download_all_artwork
-    artwork.cancel_batch_btn.on_click = lambda _: store.request_cancel()
+    artwork.cancel_batch_btn.on_click = request_cancel
     storage.prepare_btn.on_click = prepare_storage
     storage.format_btn.on_click = format_storage
+    home.readiness_action.on_click = lambda _: (
+        prepare_storage() if home.readiness_action_mode == "repair" else switch_page("storage")
+    )
     home.device_dropdown.on_change = choose_device
     home.refresh_btn.on_click = refresh_devices
     home.import_btn.on_click = lambda _: switch_page("import")
@@ -649,11 +779,53 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
     auto_artwork_checkbox.on_change = save_auto_artwork
 
     language_button = ft.TextButton("ไทย", icon=ft.Icons.LANGUAGE, on_click=toggle_language)
-    page.appbar = ft.AppBar(title=ft.Text(APP_NAME, weight=ft.FontWeight.BOLD), actions=[language_button])
+    page.appbar = ft.AppBar(
+        title=ft.Row(
+            [
+                ft.Container(
+                    width=34,
+                    height=34,
+                    border_radius=10,
+                    bgcolor=PRIMARY_SOFT,
+                    alignment=ft.alignment.center,
+                    content=ft.Icon(ft.Icons.SPORTS_ESPORTS, color=PRIMARY, size=20),
+                ),
+                ft.Column(
+                    [
+                        ft.Text("PS2 TOOLKIT", size=15, weight=ft.FontWeight.BOLD, color=TEXT),
+                        ft.Text("2000X  /  OPL LIBRARY", size=10, color=MUTED),
+                    ],
+                    spacing=0,
+                    tight=True,
+                ),
+            ],
+            spacing=11,
+        ),
+        actions=[language_button],
+        bgcolor=BACKGROUND,
+        elevation=0,
+    )
     nav = ft.Container(
-        padding=ft.padding.symmetric(horizontal=12, vertical=8),
-        bgcolor=SURFACE,
-        content=ft.Row(list(nav_buttons.values()), wrap=True, spacing=4),
+        padding=ft.padding.symmetric(horizontal=24, vertical=10),
+        bgcolor=BACKGROUND,
+        border=ft.border.only(bottom=ft.BorderSide(1, BORDER)),
+        content=ft.Row(
+            [
+                *list(nav_buttons.values()),
+                ft.Container(expand=True),
+                ft.Container(
+                    padding=ft.padding.symmetric(horizontal=11, vertical=7),
+                    bgcolor=SURFACE,
+                    border_radius=30,
+                    content=ft.Row(
+                        [ft.Container(width=7, height=7, bgcolor=SUCCESS, border_radius=10), ft.Text("LOCAL MODE", size=10, weight=ft.FontWeight.BOLD, color=MUTED)],
+                        spacing=7,
+                    ),
+                ),
+            ],
+            spacing=5,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
     )
     page.add(ft.Column([nav, content, status_bar], expand=True, spacing=0, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
     switch_page(screenshot_page or "home")

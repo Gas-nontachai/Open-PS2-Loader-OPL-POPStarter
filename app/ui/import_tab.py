@@ -6,7 +6,7 @@ import flet as ft
 from app.ui.theme import MUTED, WARNING
 
 from app.services.target_service import human_bytes, compute_buffer
-from app.ui.theme import heading, panel
+from app.ui.theme import BORDER, PRIMARY, SURFACE_RAISED, TEXT, heading, panel, page_header
 
 
 class ImportTab(ft.Column):
@@ -17,6 +17,7 @@ class ImportTab(ft.Column):
         self.selected_isos: list[str] = []
         self.available_bytes = 0
         self.required_bytes = 0
+        self.filesystem_supported = True
         self.file_statuses: dict[str, ft.Text] = {}
 
         self.drive_dropdown = ft.Dropdown(label="Destination Device", expand=True, options=[])
@@ -47,13 +48,14 @@ class ImportTab(ft.Column):
         self.summary_required = ft.Text("0 B")
         self.summary_available = ft.Text("—")
 
+        self.import_header = page_header("Import games", "Bring your PS2 collection to a verified OPL USB drive.")
         super().__init__(
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             expand=True,
             scroll=ft.ScrollMode.AUTO,
             spacing=18,
             controls=[
-                heading("Import Games"),
+                self.import_header,
                 ft.Text("Copy PS2 ISO files to verified external USB storage for Open PS2 Loader."),
                 self._step("1", "Select Storage", ft.Column([ft.Row([self.drive_dropdown, self.refresh_drives_btn]), self.drive_details, self.device_empty])),
                 self._step("2", "Select Games", ft.Column([self.pick_iso_btn, self.selected_iso_text, self.file_list])),
@@ -79,7 +81,19 @@ class ImportTab(ft.Column):
 
     @staticmethod
     def _step(number: str, title: str, content: ft.Control) -> ft.Control:
-        return panel([ft.Text(f"{number}. {title}", size=18, weight=ft.FontWeight.BOLD), content])
+        return ft.Container(
+            padding=20,
+            bgcolor="#151B2C",
+            border=ft.border.all(1, BORDER),
+            border_radius=14,
+            content=ft.Column(
+                [
+                    ft.Row([ft.Text(number.zfill(2), size=11, weight=ft.FontWeight.BOLD, color=PRIMARY), ft.Text(title, size=17, weight=ft.FontWeight.BOLD, color=TEXT)], spacing=10),
+                    content,
+                ],
+                spacing=13,
+            ),
+        )
 
     @staticmethod
     def _summary_row(label: str, value: ft.Text) -> ft.Control:
@@ -89,6 +103,7 @@ class ImportTab(ft.Column):
         self.drive_dropdown.value = None
         self.target_path.value = ""
         self.available_bytes = 0
+        self.filesystem_supported = True
         self.drive_details.value = "No external storage selected"
         self.summary_destination.value = "—"
         self.summary_available.value = "—"
@@ -101,7 +116,8 @@ class ImportTab(ft.Column):
         ]
         self.device_empty.visible = not bool(drives)
 
-    def show_drive(self, drive: dict) -> None:
+    def show_drive(self, drive: dict, filesystem_supported: bool = True) -> None:
+        self.filesystem_supported = filesystem_supported
         self.target_path.value = str(drive["path"])
         self.available_bytes = int(drive["free_bytes"])
         self.drive_details.value = (
@@ -136,7 +152,7 @@ class ImportTab(ft.Column):
         self._update_ready()
 
     def _update_ready(self) -> None:
-        self.import_btn.disabled = not bool(self.target_path.value and self.selected_isos and self.available_bytes >= self.required_bytes)
+        self.import_btn.disabled = not bool(self.filesystem_supported and self.target_path.value and self.selected_isos and self.available_bytes >= self.required_bytes)
         if self.target_path.value and self.selected_isos and self.available_bytes < self.required_bytes:
             self.progress_text.value = "Not enough space. Remove games or select a larger USB."
         elif not self.job_progress.visible:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -145,6 +146,7 @@ def download_artwork(
         skipped: list[str] = []
         failures: list[dict] = []
         replaced_types: set[str] = set()
+        pending: list = []
         for candidate in candidates:
             if cancel_event and cancel_event.is_set():
                 return {"status": "cancelled", "message": "Artwork download cancelled.", "details": {"saved": saved, "skipped": skipped}}
@@ -158,9 +160,45 @@ def download_artwork(
                 elif current["files"]:
                     skipped.append(candidate.art_type)
                     continue
+            pending.append(candidate)
+
+        # Fetch remote images concurrently to avoid making users wait through
+        # one full network timeout per artwork file. Keep USB writes serial so
+        # artwork metadata is never updated concurrently.
+        fetched: dict[int, tuple[bytes, str, bool] | Exception] = {}
+        total_pending = len(pending)
+        completed_downloads = 0
+        _emit(on_step, "progress", f"download|0|{total_pending}|Starting downloads")
+        with ThreadPoolExecutor(max_workers=4, thread_name_prefix="artwork-fetch") as executor:
+            futures = {
+                executor.submit(art_service.cached_candidate, candidate, invalidate=invalidate_cache): candidate
+                for candidate in pending
+            }
+            for future in as_completed(futures):
+                candidate = futures[future]
+                if cancel_event and cancel_event.is_set():
+                    for queued in futures:
+                        queued.cancel()
+                    break
+                try:
+                    fetched[id(candidate)] = future.result()
+                except Exception as exc:  # keep other artwork types moving
+                    fetched[id(candidate)] = exc
+                completed_downloads += 1
+                _emit(on_step, "progress", f"download|{completed_downloads}|{total_pending}|{candidate.source_name}")
+
+        processed_count = 0
+        for candidate in pending:
+            if cancel_event and cancel_event.is_set():
+                return {"status": "cancelled", "message": "Artwork download cancelled.", "details": {"saved": saved, "skipped": skipped}}
             try:
                 drive_service.validate_external_storage(target, expected_device_id)
-                content, extension, cache_hit = art_service.cached_candidate(candidate, invalidate=invalidate_cache)
+                result = fetched.get(id(candidate))
+                if isinstance(result, Exception):
+                    raise result
+                if result is None:
+                    continue
+                content, extension, cache_hit = result
                 saved.append(
                     art_service.write_artwork(
                         target,
@@ -179,6 +217,8 @@ def download_artwork(
             except Exception as exc:  # one bad image must not block the rest
                 logger.exception("Artwork candidate failed game_id=%s type=%s provider=%s", normalized_id, candidate.art_type, candidate.provider)
                 failures.append({"art_type": candidate.art_type, "provider": candidate.provider, "error": str(exc)})
+            processed_count += 1
+            _emit(on_step, "progress", f"save|{processed_count}|{total_pending}|{candidate.source_name}")
         if saved:
             return {
                 "status": "success",
@@ -191,6 +231,9 @@ def download_artwork(
     except ArtworkNetworkError as exc:
         logger.exception("Artwork provider unavailable game_id=%s", game_id)
         return {"status": "error", "message": f"{exc} You can retry or upload an image manually.", "details": {}}
+    except (TimeoutError, ConnectionError, OSError) as exc:
+        logger.exception("Artwork network or file access failed game_id=%s", game_id)
+        return {"status": "error", "message": f"Artwork source could not be reached or initialized ({exc}). Check network access and retry, or upload artwork manually.", "details": {"error": str(exc)}}
     except Exception as exc:  # noqa: BLE001
         logger.exception("Artwork download failed game_id=%s", game_id)
         return {"status": "error", "message": "Artwork could not be downloaded. Check your internet connection and try again.", "details": {"error": str(exc)}}
