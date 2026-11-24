@@ -14,7 +14,7 @@ from app.core.constants import APP_NAME, APP_VERSION, REQUIRED_FOLDERS
 from app.core.paths import app_resource_path
 from app.services import drive_service, target_service, update_service
 from app.ui import dialogs
-from app.ui.theme import app_theme, BACKGROUND, SURFACE, PRIMARY, TEXT, heading, danger_style
+from app.ui.theme import app_theme, BACKGROUND, SURFACE, PRIMARY, PRIMARY_SOFT, TEXT, MUTED, BORDER, SUCCESS, heading, danger_style, page_header, panel
 from app.ui.device_selection import retained_device
 from app.ui.art_tab import ArtTab
 from app.ui.home_page import HomePage
@@ -72,7 +72,12 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         ],
     )
     status_text = ft.Text("No external storage selected")
-    status_bar = ft.Container(content=status_text, padding=10, bgcolor=SURFACE)
+    status_bar = ft.Container(
+        content=ft.Row([ft.Icon(ft.Icons.USB, size=17, color=PRIMARY), status_text], spacing=9),
+        padding=ft.padding.symmetric(horizontal=22, vertical=10),
+        bgcolor=SURFACE,
+        border=ft.border.only(top=ft.BorderSide(1, BORDER)),
+    )
 
     settings_language = ft.Text("English")
     auto_artwork_checkbox = ft.Checkbox(
@@ -85,22 +90,26 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         scroll=ft.ScrollMode.AUTO,
         spacing=16,
         controls=[
-            heading("Settings"),
-            ft.Text("Language", size=18, weight=ft.FontWeight.BOLD),
-            settings_language,
-            settings_toggle,
-            ft.Divider(),
-            ft.Text("Artwork", size=18, weight=ft.FontWeight.BOLD),
-            auto_artwork_checkbox,
-            ft.Text("Uses the PS2 Game ID. No API key is required.", color=ft.Colors.GREY_400),
-            ft.Divider(),
-            ft.Text(APP_NAME, size=20, weight=ft.FontWeight.BOLD),
-            ft.Text(f"Version {APP_VERSION}"),
-            ft.Text("USB, import, library and manual artwork work offline. Artwork downloads and release checks require internet. Thai translation is partial."),
+            page_header("Settings", "Tune the way PS2 TOOLKIT works on this PC."),
+            panel([
+                ft.Text("Language", size=18, weight=ft.FontWeight.BOLD),
+                settings_language,
+                settings_toggle,
+            ]),
+            panel([
+                ft.Text("Artwork downloads", size=18, weight=ft.FontWeight.BOLD),
+                auto_artwork_checkbox,
+                ft.Text("Artwork matches by PS2 Game ID. No API key is required.", color=MUTED),
+            ]),
+            panel([
+                ft.Text(APP_NAME, size=20, weight=ft.FontWeight.BOLD),
+                ft.Text(f"Version {APP_VERSION}"),
+                ft.Text("USB, import, library and manual artwork work offline. Artwork downloads and release checks require internet.", color=MUTED),
+            ]),
         ],
     )
 
-    content = ft.Container(expand=True, padding=20, content=home)
+    content = ft.Container(expand=True, padding=ft.padding.symmetric(horizontal=32, vertical=28), content=home)
     nav_names = {
         "home": ("Home", "หน้าหลัก"),
         "import": ("Import Games", "นำเข้าเกม"),
@@ -115,7 +124,19 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         "storage": ft.Icons.USB,
         "settings": ft.Icons.SETTINGS_OUTLINED,
     }
-    nav_buttons = {name: ft.TextButton(label[0], icon=nav_icons[name]) for name, label in nav_names.items()}
+    nav_buttons = {
+        name: ft.TextButton(
+            label[0],
+            icon=nav_icons[name],
+            style=ft.ButtonStyle(
+                color=MUTED,
+                bgcolor=ft.Colors.TRANSPARENT,
+                padding=ft.padding.symmetric(horizontal=15, vertical=11),
+                shape=ft.RoundedRectangleBorder(radius=10),
+            ),
+        )
+        for name, label in nav_names.items()
+    }
 
     def ui_call(callback: Callable[[], None]) -> None:
         caller = getattr(page, "call_from_thread", None)
@@ -147,8 +168,10 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         content.content = pages[name]
         for key, button in nav_buttons.items():
             button.style = ft.ButtonStyle(
-                bgcolor=PRIMARY if key == name else ft.Colors.TRANSPARENT,
-                color=BACKGROUND if key == name else TEXT,
+                bgcolor=PRIMARY_SOFT if key == name else ft.Colors.TRANSPARENT,
+                color=PRIMARY if key == name else MUTED,
+                padding=ft.padding.symmetric(horizontal=15, vertical=11),
+                shape=ft.RoundedRectangleBorder(radius=10),
             )
         set_status("Checking connected storage…") if check_drive else None
         page.update()
@@ -651,11 +674,53 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
     auto_artwork_checkbox.on_change = save_auto_artwork
 
     language_button = ft.TextButton("ไทย", icon=ft.Icons.LANGUAGE, on_click=toggle_language)
-    page.appbar = ft.AppBar(title=ft.Text(APP_NAME, weight=ft.FontWeight.BOLD), actions=[language_button])
+    page.appbar = ft.AppBar(
+        title=ft.Row(
+            [
+                ft.Container(
+                    width=34,
+                    height=34,
+                    border_radius=10,
+                    bgcolor=PRIMARY_SOFT,
+                    alignment=ft.alignment.center,
+                    content=ft.Icon(ft.Icons.SPORTS_ESPORTS, color=PRIMARY, size=20),
+                ),
+                ft.Column(
+                    [
+                        ft.Text("PS2 TOOLKIT", size=15, weight=ft.FontWeight.BOLD, color=TEXT),
+                        ft.Text("2000X  /  OPL LIBRARY", size=10, color=MUTED),
+                    ],
+                    spacing=0,
+                    tight=True,
+                ),
+            ],
+            spacing=11,
+        ),
+        actions=[language_button],
+        bgcolor=BACKGROUND,
+        elevation=0,
+    )
     nav = ft.Container(
-        padding=ft.padding.symmetric(horizontal=12, vertical=8),
-        bgcolor=SURFACE,
-        content=ft.Row(list(nav_buttons.values()), wrap=True, spacing=4),
+        padding=ft.padding.symmetric(horizontal=24, vertical=10),
+        bgcolor=BACKGROUND,
+        border=ft.border.only(bottom=ft.BorderSide(1, BORDER)),
+        content=ft.Row(
+            [
+                *list(nav_buttons.values()),
+                ft.Container(expand=True),
+                ft.Container(
+                    padding=ft.padding.symmetric(horizontal=11, vertical=7),
+                    bgcolor=SURFACE,
+                    border_radius=30,
+                    content=ft.Row(
+                        [ft.Container(width=7, height=7, bgcolor=SUCCESS, border_radius=10), ft.Text("LOCAL MODE", size=10, weight=ft.FontWeight.BOLD, color=MUTED)],
+                        spacing=7,
+                    ),
+                ),
+            ],
+            spacing=5,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
     )
     page.add(ft.Column([nav, content, status_bar], expand=True, spacing=0, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
     switch_page(screenshot_page or "home")

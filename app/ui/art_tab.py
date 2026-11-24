@@ -6,7 +6,7 @@ from app.ui.theme import danger_style, heading
 from typing import Callable
 
 import flet as ft
-from app.ui.theme import SURFACE, MUTED, BORDER, PRIMARY, SUCCESS, WARNING
+from app.ui.theme import SURFACE, MUTED, BORDER, PRIMARY, SUCCESS, WARNING, page_header
 
 from app.services.art_service import ARTWORK_SPECS
 
@@ -59,8 +59,9 @@ class ArtTab(ft.Column):
         self.artwork_grid = ft.ResponsiveRow(spacing=8, run_spacing=8)
 
         sidebar = ft.Container(
-            width=285,
-            padding=12,
+            width=320,
+            padding=18,
+            bgcolor=SURFACE,
             border=ft.border.all(1, BORDER),
             border_radius=12,
             content=ft.Column(
@@ -100,7 +101,7 @@ class ArtTab(ft.Column):
             controls=[
                 ft.Row(
                     [
-                        heading("Artwork"),
+                        page_header("Artwork studio", "Find, download, or replace covers for your PS2 games."),
                         ft.Text("Matched by PS2 Game ID • no API key", size=12, color=MUTED),
                     ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,

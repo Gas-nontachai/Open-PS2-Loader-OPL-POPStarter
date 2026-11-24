@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Callable
 
 import flet as ft
-from app.ui.theme import SURFACE, MUTED, BORDER, DESTRUCTIVE
+from app.ui.theme import SURFACE, MUTED, BORDER, DESTRUCTIVE, PRIMARY, TEXT, page_header
 
 
 class LibraryTab(ft.Column):
@@ -15,7 +15,7 @@ class LibraryTab(ft.Column):
         super().__init__(
             expand=False,
             controls=[
-                ft.Text("Game Files", size=28, weight=ft.FontWeight.BOLD),
+                page_header("Your game library", "Browse installed titles and jump straight into artwork or storage actions."),
                 ft.Row([self.scan_btn, self.storage], wrap=True),
                 self.empty,
                 self.games,
@@ -64,16 +64,18 @@ class LibraryTab(ft.Column):
             )
             self.games.controls.append(
                 ft.Container(
-                    height=116,
-                    padding=10,
-                    border=ft.border.all(1, BORDER),
-                    border_radius=10,
+                    height=122,
+                    padding=12,
+                    bgcolor=SURFACE,
+                    border=ft.border.only(bottom=ft.BorderSide(1, BORDER)),
+                    border_radius=9,
                     content=ft.Row(
                         [
                             thumbnail,
                             game_info,
                             ft.IconButton(
                                 icon=ft.Icons.IMAGE_OUTLINED,
+                                icon_color=PRIMARY,
                                 tooltip="Manage artwork",
                                 on_click=lambda _, selected=game: on_artwork(selected),
                             ),

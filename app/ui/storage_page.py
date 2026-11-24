@@ -4,7 +4,7 @@ import flet as ft
 from app.ui.theme import DESTRUCTIVE, SUCCESS, WARNING
 
 from app.core.constants import REQUIRED_FOLDERS
-from app.ui.theme import danger_style, heading
+from app.ui.theme import danger_style, heading, page_header, panel, BORDER, MUTED, TEXT, PRIMARY
 
 
 class StoragePage(ft.Column):
@@ -20,17 +20,27 @@ class StoragePage(ft.Column):
             scroll=ft.ScrollMode.AUTO,
             spacing=16,
             controls=[
-                heading("USB / Storage"),
-                self.device_name,
-                self.device_details,
-                ft.Text("OPL Structure", size=18, weight=ft.FontWeight.BOLD),
-                self.structure,
-                ft.Row([self.prepare_btn], wrap=True),
-                ft.Text("Repair adds missing folders only. It does not repair the file system or recover data."),
-                ft.Divider(),
-                ft.Text("Danger Zone", size=18, weight=ft.FontWeight.BOLD, color=DESTRUCTIVE),
-                ft.Text("Format erases the entire physical disk and every partition. DiskPart FAT32 may fail on some capacities."),
-                ft.Row([self.format_btn], wrap=True),
+                page_header("USB & storage", "Prepare an OPL drive and review its structure before importing games."),
+                panel([
+                    ft.Row([ft.Icon(ft.Icons.USB, color=PRIMARY), self.device_name], spacing=10),
+                    self.device_details,
+                    ft.Divider(color=BORDER),
+                    ft.Text("OPL folder structure", size=18, weight=ft.FontWeight.BOLD, color=TEXT),
+                    self.structure,
+                    ft.Text("Repair adds missing folders. It does not repair a file system or recover data.", size=12, color=MUTED),
+                    ft.Row([self.prepare_btn], wrap=True),
+                ]),
+                ft.Container(
+                    padding=18,
+                    border=ft.border.all(1, "#62323C"),
+                    bgcolor="#24151E",
+                    border_radius=14,
+                    content=ft.Column([
+                        ft.Row([ft.Icon(ft.Icons.WARNING_AMBER, color=DESTRUCTIVE), ft.Text("Format drive", size=17, weight=ft.FontWeight.BOLD, color=DESTRUCTIVE)], spacing=9),
+                        ft.Text("Formatting erases the entire physical disk and every partition. Confirm the selected device carefully.", color=MUTED),
+                        ft.Row([self.format_btn], wrap=True),
+                    ], spacing=10),
+                ),
             ],
         )
 

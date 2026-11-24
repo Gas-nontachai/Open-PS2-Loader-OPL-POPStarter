@@ -6,7 +6,7 @@ import flet as ft
 from app.ui.theme import MUTED, WARNING
 
 from app.services.target_service import human_bytes, compute_buffer
-from app.ui.theme import heading, panel
+from app.ui.theme import BORDER, PRIMARY, SURFACE_RAISED, TEXT, heading, panel, page_header
 
 
 class ImportTab(ft.Column):
@@ -47,13 +47,14 @@ class ImportTab(ft.Column):
         self.summary_required = ft.Text("0 B")
         self.summary_available = ft.Text("—")
 
+        self.import_header = page_header("Import games", "Bring your PS2 collection to a verified OPL USB drive.")
         super().__init__(
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             expand=True,
             scroll=ft.ScrollMode.AUTO,
             spacing=18,
             controls=[
-                heading("Import Games"),
+                self.import_header,
                 ft.Text("Copy PS2 ISO files to verified external USB storage for Open PS2 Loader."),
                 self._step("1", "Select Storage", ft.Column([ft.Row([self.drive_dropdown, self.refresh_drives_btn]), self.drive_details, self.device_empty])),
                 self._step("2", "Select Games", ft.Column([self.pick_iso_btn, self.selected_iso_text, self.file_list])),
@@ -79,7 +80,19 @@ class ImportTab(ft.Column):
 
     @staticmethod
     def _step(number: str, title: str, content: ft.Control) -> ft.Control:
-        return panel([ft.Text(f"{number}. {title}", size=18, weight=ft.FontWeight.BOLD), content])
+        return ft.Container(
+            padding=20,
+            bgcolor="#151B2C",
+            border=ft.border.all(1, BORDER),
+            border_radius=14,
+            content=ft.Column(
+                [
+                    ft.Row([ft.Text(number.zfill(2), size=11, weight=ft.FontWeight.BOLD, color=PRIMARY), ft.Text(title, size=17, weight=ft.FontWeight.BOLD, color=TEXT)], spacing=10),
+                    content,
+                ],
+                spacing=13,
+            ),
+        )
 
     @staticmethod
     def _summary_row(label: str, value: ft.Text) -> ft.Control:
