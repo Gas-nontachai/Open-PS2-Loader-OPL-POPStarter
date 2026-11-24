@@ -272,7 +272,7 @@ class ArtTab(ft.Column):
         self.new_placeholder.visible = True
         self.save_btn.disabled = True
 
-    def set_busy(self, busy: bool, batch: bool = False) -> None:
+    def set_busy(self, busy: bool, cancellable: bool = False) -> None:
         self._busy = busy
         game_selected = bool(self.selected_game())
         for control in (self.search, self.game_dropdown, self.type_dropdown, self.asset_dropdown):
@@ -282,7 +282,9 @@ class ArtTab(ft.Column):
         self.refresh_btn.disabled = busy or not game_selected
         self.remove_btn.disabled = busy or not bool(self._status.get(str(self.type_dropdown.value), {}).get("files"))
         self.save_btn.disabled = busy or not game_selected or not bool(self._new_art_path)
-        self.cancel_batch_btn.visible = busy
+        self.cancel_batch_btn.visible = busy and cancellable
+        self.cancel_batch_btn.disabled = not busy or not cancellable
+        self.cancel_batch_btn.text = "Cancel artwork task" if cancellable else "Cancel"
 
     def translate(self) -> None:
         pass

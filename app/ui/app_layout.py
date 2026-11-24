@@ -32,6 +32,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
     page.window.height = 820
     page.window.min_width = 820
     page.window.min_height = 620
+    page.window.prevent_close = False
     page.theme_mode = ft.ThemeMode.DARK
     page.theme = app_theme()
     page.bgcolor = BACKGROUND
@@ -71,10 +72,23 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             WorkspaceTab(text="Artwork", icon=ft.Icons.IMAGE_OUTLINED, content=artwork),
         ],
     )
-    status_text = ft.Text("No external storage selected")
+    status_text = ft.Text("No external storage selected", expand=True, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
+    activity_text = ft.Text("", size=12, weight=ft.FontWeight.BOLD, color=PRIMARY, visible=False, max_lines=1)
+    activity_spinner = ft.ProgressRing(width=15, height=15, stroke_width=2, color=PRIMARY, visible=False)
+    activity_progress = ft.ProgressBar(value=None, height=2, visible=False)
+    cancel_operation_btn = ft.TextButton("Cancel", icon=ft.Icons.CANCEL_OUTLINED, visible=False)
     status_bar = ft.Container(
-        content=ft.Row([ft.Icon(ft.Icons.USB, size=17, color=PRIMARY), status_text], spacing=9),
-        padding=ft.padding.symmetric(horizontal=22, vertical=10),
+        content=ft.Column(
+            [
+                ft.Row(
+                    [ft.Icon(ft.Icons.USB, size=17, color=PRIMARY), status_text, ft.Container(expand=True), activity_spinner, activity_text, cancel_operation_btn],
+                    spacing=9,
+                ),
+                activity_progress,
+            ],
+            spacing=5,
+        ),
+        padding=ft.padding.symmetric(horizontal=22, vertical=8),
         bgcolor=SURFACE,
         border=ft.border.only(top=ft.BorderSide(1, BORDER)),
     )
@@ -149,6 +163,15 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         status_text.value = message
         status_text.color = ft.Colors.RED_300 if error else ft.Colors.GREEN_300
 
+    def set_activity(message: str = "", *, busy: bool = False, cancellable: bool = False) -> None:
+        activity_text.value = message
+        activity_text.visible = busy
+        activity_spinner.visible = busy
+        activity_progress.visible = busy
+        cancel_operation_btn.visible = busy and cancellable
+        cancel_operation_btn.disabled = False
+        cancel_operation_btn.text = "Cancel"
+
     def clear_game_views() -> None:
         store.scanned_games = []
         library.set_games([], ask_delete_game, open_artwork_for_game)
@@ -213,9 +236,9 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         library.scan_btn.disabled = False
         home.device_dropdown.value = store.target_path
         import_page.drive_dropdown.value = store.target_path
-        import_page.show_drive(device, supported)
         folders = inspect_folders()
         supported = selected_filesystem_supported(device)
+        import_page.show_drive(device, supported)
         home.show_device(device, folders, supported)
         storage.show_device(device, folders, supported)
         app_config.last_selected_drive = store.target_path
@@ -232,6 +255,12 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
 
     def apply_device_refresh(records: list[dict]) -> None:
         nonlocal available_devices
+        device_refresh["running"] = False
+        home.refresh_btn.disabled = False
+        import_page.refresh_drives_btn.disabled = False
+        home.device_dropdown.disabled = False
+        import_page.drive_dropdown.disabled = False
+        set_activity()
         available_devices = {str(record["path"]): record for record in records}
         import_page.set_drives(records)
         home.device_dropdown.options = [ft.dropdown.Option(key=r["path"], text=f"{r['letter']} | {r['model']} | {r['total_human']}") for r in records]
@@ -256,6 +285,12 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         if device_refresh["running"]:
             return
         device_refresh["running"] = True
+        home.refresh_btn.disabled = True
+        import_page.refresh_drives_btn.disabled = True
+        home.device_dropdown.disabled = True
+        import_page.drive_dropdown.disabled = True
+        set_activity("Checking connected USB drives…", busy=True)
+        page.update()
 
         def worker() -> None:
             try:
@@ -280,20 +315,59 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         threading.Thread(target=worker, daemon=True).start()
 
     def choose_device(event: ft.ControlEvent) -> None:
-        if store.is_loading:
+        if store.is_loading or device_refresh["running"]:
             return
         apply_selected_device(available_devices.get(str(event.control.value or "")))
         page.update()
 
-    def run_async(function: Callable, *args, state: AppState, done: Callable[[dict], None] | None = None) -> None:
+    operation_cancellable = {"value": False}
+
+    def request_cancel(_: ft.ControlEvent | None = None) -> None:
+        if not store.is_loading or not operation_cancellable["value"] or store.cancel_event.is_set():
+            return
+        store.request_cancel()
+        cancel_operation_btn.disabled = True
+        cancel_operation_btn.text = "Stopping…"
+        set_status("Cancellation requested. Finishing the current safe cleanup…")
+        page.update()
+
+    cancel_operation_btn.on_click = request_cancel
+
+    def on_window_event(event: ft.ControlEvent) -> None:
+        if event.data == "close" and store.is_loading:
+            if operation_cancellable["value"]:
+                message = "A task is still running. Cancel it and wait for cleanup before closing."
+            else:
+                message = "A storage task is still running. Keep the app open until it finishes."
+            dialogs.show_snackbar(page, message, True)
+
+    page.on_window_event = on_window_event
+
+    def run_async(
+        function: Callable,
+        *args,
+        state: AppState,
+        activity: str,
+        cancellable: bool = False,
+        done: Callable[[dict], None] | None = None,
+    ) -> None:
+        if device_refresh["running"]:
+            set_status("Please wait until the USB check is complete before starting another operation.")
+            page.update()
+            return
         if store.is_loading:
             return
         store.is_loading = True
         store.current_state = state
+        page.window.prevent_close = True
+        operation_cancellable["value"] = cancellable
+        if cancellable:
+            store.cancel_event.clear()
         home.disabled = storage.disabled = library.disabled = True
-        artwork.set_busy(True)
+        artwork.set_busy(True, cancellable=cancellable)
         import_page.set_controls_enabled(False)
-        set_status("Working…")
+        set_activity(activity, busy=True, cancellable=cancellable)
+        set_status("Please wait. Keep the USB connected until this operation finishes.")
         page.update()
 
         def worker() -> None:
@@ -310,9 +384,12 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
 
             def finish() -> None:
                 store.is_loading = False
+                operation_cancellable["value"] = False
+                page.window.prevent_close = False
                 home.disabled = storage.disabled = library.disabled = False
                 artwork.set_busy(False)
                 import_page.set_controls_enabled(True)
+                set_activity()
                 if result.get("device_unavailable"):
                     apply_selected_device(None)
                 success = result.get("status") == "success"
@@ -370,6 +447,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             progress,
             store.selected_device_id,
             state=AppState.VALIDATING,
+            activity="Scanning the USB game library…",
             done=after,
         )
 
@@ -377,7 +455,6 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         if not store.target_path or not import_page.selected_isos:
             dialogs.show_snackbar(page, "Select external storage and at least one ISO file.", True)
             return
-        store.cancel_event.clear()
         import_page.clear_result()
         import_page.job_progress.visible = True
         import_page.job_progress.value = 0
@@ -418,6 +495,8 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             store.selected_device_id,
             lambda event: ui_call(lambda: (import_page.show_progress(event), page.update())),
             state=AppState.IMPORTING,
+            activity="Importing selected games…",
+            cancellable=True,
             done=after,
         )
 
@@ -440,6 +519,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             progress,
             store.selected_device_id,
             state=AppState.VALIDATING,
+            activity="Creating missing OPL folders…",
             done=after,
         )
 
@@ -459,6 +539,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
                 progress,
                 device_id,
                 state=AppState.FORMATTING,
+                activity="Formatting USB drive…",
                 done=lambda result: (dialogs.show_snackbar(page, str(result.get("message")), result.get("status") != "success"), refresh_devices()),
             )
 
@@ -476,6 +557,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
                 False,
                 store.selected_device_id,
                 state=AppState.IMPORTING,
+                activity="Deleting selected game…",
                 done=lambda result: (dialogs.show_snackbar(page, str(result.get("message")), result.get("status") != "success"), scan_library()),
             )
 
@@ -520,6 +602,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             progress,
             store.selected_device_id,
             state=AppState.ARTING,
+            activity="Saving artwork…",
             done=after,
         )
 
@@ -542,6 +625,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
                 store.selected_device_id,
                 artwork.selected_filename() if art_type == "SCR" else None,
                 state=AppState.ARTING,
+                activity="Removing artwork…",
                 done=lambda result: (dialogs.show_snackbar(page, str(result.get("message")), result.get("status") != "success"), refresh_artwork_status()),
             )
 
@@ -561,11 +645,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         if not game:
             dialogs.show_snackbar(page, "Select a game first.", True)
             return
-        store.cancel_event.clear()
-        artwork.set_busy(True)
-
         def after(result: dict) -> None:
-            artwork.set_busy(False)
             dialogs.show_snackbar(page, str(result.get("message")), result.get("status") not in {"success", "cancelled"})
             refresh_artwork_status()
 
@@ -578,6 +658,8 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             store.cancel_event,
             store.selected_device_id,
             state=AppState.ARTING,
+            activity="Downloading artwork…",
+            cancellable=True,
             done=after,
         )
 
@@ -604,11 +686,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
         if not store.scanned_games:
             dialogs.show_snackbar(page, "Scan the game library first.", True)
             return
-        store.cancel_event.clear()
-        artwork.set_busy(True, batch=True)
-
         def after(result: dict) -> None:
-            artwork.set_busy(False)
             dialogs.show_snackbar(page, str(result.get("message")), result.get("status") not in {"success", "cancelled"})
             scan_library()
 
@@ -620,6 +698,8 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
             store.cancel_event,
             store.selected_device_id,
             state=AppState.ARTING,
+            activity="Checking artwork for all games…",
+            cancellable=True,
             done=after,
         )
 
@@ -665,7 +745,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
     import_page.refresh_drives_btn.on_click = refresh_devices
     import_page.drive_dropdown.on_change = choose_device
     import_page.import_btn.on_click = request_import
-    import_page.cancel_btn.on_click = lambda _: store.request_cancel()
+    import_page.cancel_btn.on_click = request_cancel
     library.scan_btn.on_click = lambda _: scan_library()
     artwork.save_btn.on_click = save_artwork
     artwork.remove_btn.on_click = remove_artwork
@@ -673,7 +753,7 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
     artwork.refresh_btn.on_click = lambda _: refresh_artwork_status()
     artwork.replace_online_btn.on_click = confirm_replace_online
     artwork.batch_btn.on_click = download_all_artwork
-    artwork.cancel_batch_btn.on_click = lambda _: store.request_cancel()
+    artwork.cancel_batch_btn.on_click = request_cancel
     storage.prepare_btn.on_click = prepare_storage
     storage.format_btn.on_click = format_storage
     home.readiness_action.on_click = lambda _: (
