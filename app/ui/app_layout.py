@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import os
 from dataclasses import asdict
 from pathlib import Path
 from typing import Callable
@@ -830,10 +831,52 @@ def build_app(page: ft.Page, screenshot_page: str | None = None) -> None:
     page.add(ft.Column([nav, content, status_bar], expand=True, spacing=0, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
     switch_page(screenshot_page or "home")
 
+    update_running = False
+
+    async def install_update(release: dict[str, str]) -> None:
+        nonlocal update_running
+        if update_running:
+            return
+        if store.is_loading or device_refresh["running"]:
+            dialogs.show_snackbar(page, "Wait for the current operation to finish before updating.", True)
+            dialogs.show_update_banner(page, release, lambda: page.run_task(install_update, release))
+            return
+        update_running = True
+        root = page.controls[0]
+        root.disabled = True
+        progress_bar = ft.ProgressBar(value=0)
+        message = ft.Text("Downloading update… The app will close and reopen after installation.")
+        dialog = ft.AlertDialog(modal=True, title=ft.Text("Updating PS2 Toolkit"), content=ft.Column([message, progress_bar], tight=True, width=460))
+        page.open(dialog)
+        installer = None
+        try:
+            def report(value: float) -> None:
+                progress_bar.value = value
+                message.value = f"Downloading update… {int(value * 100)}%"
+                page.update()
+
+            installer = await asyncio.to_thread(update_service.download_update, release, report)
+            message.value = "Installing update… The app will reopen automatically."
+            page.update()
+            update_service.launch_update(installer)
+            page.window.destroy()
+            os._exit(0)
+        except Exception as exc:
+            if installer is not None:
+                import shutil
+                shutil.rmtree(installer.parent, ignore_errors=True)
+            root.disabled = False
+            page.close(dialog)
+            dialogs.show_snackbar(page, f"Update failed: {exc}. Please try again.", True)
+            dialogs.show_update_banner(page, release, lambda: page.run_task(install_update, release))
+        finally:
+            update_running = False
+
     async def check_updates() -> None:
         release = await asyncio.to_thread(update_service.check_for_update)
         if release:
-            dialogs.show_update_banner(page, release)
+            callback = (lambda: page.run_task(install_update, release)) if update_service.supports_in_app_update() else None
+            dialogs.show_update_banner(page, release, callback)
 
     if screenshot_page is None:
         page.run_task(check_updates)
