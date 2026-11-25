@@ -76,3 +76,15 @@ Do not distribute `.venv`, `.env`, source caches, logs, build intermediates, `.p
 - If Inno Setup is not detected, install version 6 in its default per-user or Program Files location.
 - If no destination appears, confirm Windows reports the physical disk bus as USB. Unknown classification is rejected intentionally.
 - Code-sign the final installer in a trusted release environment before public distribution.
+
+## Import integrity
+
+Imports read back staged USB files and compare their byte count and SHA-256
+against the source ISO before publishing them. Verification can be cancelled;
+large imports take longer because both source and destination are read again.
+Split USBExtreme overwrites retain the old parts until verification finishes,
+then keep backups during replacement and roll back on handled commit errors.
+This requires enough free space for the complete replacement alongside the old game.
+A power failure or disconnected drive during the multi-file commit cannot be
+rolled back reliably; backups may remain and manual recovery may be needed.
+Checksum agreement confirms copied data, not PS2/OPL game compatibility.

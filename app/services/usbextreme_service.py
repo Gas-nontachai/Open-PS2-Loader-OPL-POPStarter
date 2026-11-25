@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import ctypes
 import math
+import os
+import uuid
+
+from app.services.integrity_service import verify_copy
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
@@ -83,8 +87,14 @@ def read_entries(target: Path) -> list[UlEntry]:
 
 def write_entries(target: Path, entries: list[UlEntry]) -> None:
     temporary = target / "ul.cfg.part"
-    temporary.write_bytes(b"".join(encode_entry(entry) for entry in entries))
-    temporary.replace(target / "ul.cfg")
+    try:
+        with temporary.open("wb") as stream:
+            stream.write(b"".join(encode_entry(entry) for entry in entries))
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(target / "ul.cfg")
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def entry_files(target: Path, entry: UlEntry) -> list[Path]:
@@ -100,6 +110,8 @@ def install_iso(
     media: str,
     progress: ProgressCB | None = None,
     cancel_event: Event | None = None,
+    entries: list[UlEntry] | None = None,
+    verification_progress: Callable[[int], None] | None = None,
 ) -> tuple[UlEntry, list[Path]]:
     title = safe_title(title)
     total = source.stat().st_size
@@ -109,6 +121,9 @@ def install_iso(
     temporary_files: list[Path] = []
     final_files: list[Path] = []
     copied = 0
+    backups: list[tuple[Path, Path]] = []
+    published: list[Path] = []
+    committed = False
     try:
         with source.open("rb") as source_file:
             for part_index in range(part_count):
@@ -130,16 +145,43 @@ def install_iso(
                         if progress:
                             progress(copied, total)
                     part_file.flush()
+                    os.fsync(part_file.fileno())
                 final_files.append(final_path)
-        for final_path in final_files:
-            final_path.unlink(missing_ok=True)
+        verify_copy(source, temporary_files, cancel_event, verification_progress)
+        old_files = set(final_files)
+        if entries is not None:
+            for old in read_entries(target):
+                if old.game_id.upper() == game_id.upper():
+                    old_files.update(entry_files(target, old))
+        token = uuid.uuid4().hex
+        for old in sorted(old_files):
+            if old.exists():
+                backup = old.with_name(old.name + "." + token + ".bak")
+                old.replace(backup)
+                backups.append((old, backup))
         for temporary_path, final_path in zip(temporary_files, final_files):
             temporary_path.replace(final_path)
+            published.append(final_path)
+        if entries is not None:
+            write_entries(target, entries + [entry])
+        committed = True
         return entry, final_files
     except Exception:
+        for path in published:
+            path.unlink(missing_ok=True)
+        for old, backup in reversed(backups):
+            backup.replace(old)
+        raise
+    finally:
         for path in temporary_files:
             path.unlink(missing_ok=True)
-        raise
+        if committed:
+            for _, backup in backups:
+                try:
+                    backup.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
 
 
 def remove_entry(target: Path, game_id: str) -> list[str]:
