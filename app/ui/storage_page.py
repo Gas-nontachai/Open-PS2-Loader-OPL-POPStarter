@@ -54,7 +54,7 @@ class StoragePage(ft.Column):
     ) -> None:
         enabled = bool(drive)
         self.prepare_btn.disabled = not enabled or not filesystem_supported
-        self.format_btn.disabled = not enabled or filesystem_supported
+        self.format_btn.disabled = not enabled
         if not drive:
             self.device_name.value = "No external storage selected"
             self.device_details.value = "Connect a supported USB device and refresh."
@@ -68,7 +68,7 @@ class StoragePage(ft.Column):
                 f"{drive['total_human']} total • {drive['free_human']} free"
             )
             if filesystem_supported:
-                self.filesystem_status.value = f"{filesystem} is supported. Formatting is not needed for this file system."
+                self.filesystem_status.value = f"{filesystem} is supported. You can still format this drive to erase all data and start fresh."
                 self.filesystem_status.color = SUCCESS
             else:
                 self.filesystem_status.value = f"{filesystem} is not recognized as supported. Formatting erases the entire drive."
