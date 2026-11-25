@@ -202,8 +202,16 @@ are ignored by Git and are never uploaded by this workflow.
 The app checks this repository's latest published GitHub Release in the
 background once per launch. If its stable `vMAJOR.MINOR.PATCH` tag is newer than
 `APP_VERSION`, a dismissible banner shows the installed and available versions.
-**Download** opens the project's release page in the browser; **Later** dismisses
-the recommendation for this session. The app never installs an update itself.
+In packaged Windows builds, **Update and restart** downloads the installer inside
+the app, displays progress, and verifies it against the release's `SHA256SUMS.txt`.
+After verification a detached helper waits for the app to exit, installs into its
+current directory, and opens the updated app only when installation succeeds.
+Windows may request administrator approval. Installation errors show a message
+and retain the installer log. Updates wait until current USB operations finish.
+Downloads that fail or have an incorrect checksum leave the running app open.
+Source runs and other platforms retain **Download**, which opens the release page.
+**Later** dismisses the recommendation for this session. Older builds need one
+manual installation of a release containing this updater to enable this flow.
 
 Drafts, prereleases, equal/older versions and malformed responses are ignored.
 Offline connections, timeouts, missing releases and API rate limits do not

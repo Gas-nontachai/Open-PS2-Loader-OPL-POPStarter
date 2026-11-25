@@ -104,7 +104,7 @@ def show_snackbar(page: ft.Page, message: str, is_error: bool = False) -> None:
     page.update()
 
 
-def show_update_banner(page: ft.Page, release: dict[str, str]) -> None:
+def show_update_banner(page: ft.Page, release: dict[str, str], on_update: Callable[[], None] | None = None) -> None:
     from app.core.constants import APP_VERSION
     from app.core.i18n import get_lang
 
@@ -118,7 +118,10 @@ def show_update_banner(page: ft.Page, release: dict[str, str]) -> None:
         leading=ft.Icon(ft.Icons.SYSTEM_UPDATE),
         content=ft.Text(message),
         actions=[
-            ft.TextButton("ดาวน์โหลด" if thai else "Download", on_click=lambda _: page.launch_url(release["url"])),
+            ft.TextButton(
+                ("อัปเดตและเปิดใหม่" if thai else "Update and restart") if on_update else ("ดาวน์โหลด" if thai else "Download"),
+                on_click=lambda _: (page.close(banner), on_update()) if on_update else page.launch_url(release["url"]),
+            ),
             ft.TextButton("ไว้ภายหลัง" if thai else "Later", on_click=lambda _: page.close(banner)),
         ],
     )
