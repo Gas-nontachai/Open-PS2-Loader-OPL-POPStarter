@@ -8,7 +8,7 @@ from threading import Event
 from typing import Callable
 
 from app.core.exceptions import OperationCancelledError
-from app.services import drive_service, format_service, game_service, target_service, usbextreme_service
+from app.services import drive_service, format_service, game_service, target_service, usbextreme_service, integrity_service
 
 StepCB = Callable[[str, str], None]
 logger = logging.getLogger("ps2_toolkit.import")
@@ -229,8 +229,6 @@ def import_isos(
                     report(100, "Skipped")
                     _emit(on_step, "info", f"skipped duplicate: {item['game_name']}")
                     continue
-                if duplicate:
-                    usbextreme_service.remove_entry(target, item["game_id"])
 
                 _emit(on_step, "info", f"[{idx}/{len(prepared)}] preparing large game for FAT32: {src.name}")
 
@@ -252,18 +250,9 @@ def import_isos(
                     media=item["folder"],
                     progress=split_progress,
                     cancel_event=cancel_event,
+                    entries=[e for e in entries if e.game_id.upper() != item["game_id"].upper()],
+                    verification_progress=lambda pct: report(pct, "Verifying"),
                 )
-                try:
-                    current_entries = [
-                        existing
-                        for existing in usbextreme_service.read_entries(target)
-                        if existing.game_id.upper() != item["game_id"].upper()
-                    ]
-                    usbextreme_service.write_entries(target, current_entries + [entry])
-                except Exception:
-                    for part_file in part_files:
-                        part_file.unlink(missing_ok=True)
-                    raise
 
                 destination_name = part_files[0].name
                 game_service.upsert_manifest_entry(
@@ -303,6 +292,8 @@ def import_isos(
             temporary.unlink(missing_ok=True)
             try:
                 _copy_with_progress(src, temporary, on_step=on_step, cancel_event=cancel_event, on_progress=report)
+                report(0, "Verifying")
+                integrity_service.verify_copy(src, [temporary], cancel_event, lambda pct: report(pct, "Verifying"))
                 temporary.replace(destination)
             except OperationCancelledError:
                 report(0, "Cancelled")
